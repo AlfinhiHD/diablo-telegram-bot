@@ -91,6 +91,14 @@ function parseNominalString(str, unitStr = "") {
   return Math.round(num);
 }
 
+function hasExpenseNominal(str) {
+  return (
+    /(?:rp\.?\s*)?\b\d+(?:[.,]\d+)?\s*(?:k|rb|ribu|jt|juta)\b/i.test(str) ||
+    /(?:rp\.?\s*)\d+/i.test(str) ||
+    /\b\d{4,9}\b/.test(str)
+  );
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -346,9 +354,129 @@ export async function POST(req) {
       }
     }
 
-    // Deteksi Advisor vs Logger
+    const lower = text.toLowerCase();
+
+    // ==========================================
+    // FAST QUERY ENGINE (<50ms, Tanpa AI Delay)
+    // ==========================================
+
+    // 1. Tanya Pengeluaran Hari Ini / Rekap Hari Ini
+    const isTodayQuery =
+      (lower.includes("hari ini") && (lower.includes("keluar") || lower.includes("habis") || lower.includes("berapa") || lower.includes("belanja") || lower.includes("catat"))) ||
+      lower.includes("udah keluar berapa") ||
+      lower.includes("udah belanja apa") ||
+      lower.includes("tadi habis berapa") ||
+      lower.includes("pengeluaran hari ini") ||
+      lower.includes("rekap hari ini");
+
+    if (isTodayQuery) {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayTxs = transactions.filter((t) => new Date(t.createdAt) >= startOfToday);
+      const todaySpentStr = formatRupiah(analytics.budget.todaySpent);
+      const safeDailyStr = formatRupiah(analytics.budget.safeDailySpend);
+      const todayRemStr = formatRupiah(analytics.budget.todayRemaining);
+      const remBudgetStr = formatRupiah(analytics.budget.remainingBudget);
+
+      let reply = "";
+      if (todayTxs.length === 0) {
+        reply =
+          `Siap Tuan. Hari ini Tuan *belum mencatat pengeluaran* apapun.\n\n` +
+          `• Sisa jatah aman hari ini: *${safeDailyStr}*\n` +
+          `• Sisa budget siklus: *${remBudgetStr}* (${analytics.cycle.daysRemaining} hari ke gajian)\n\n` +
+          `_Kukuku... Pertahankan ketenangan finansial ini, Tuan._`;
+      } else {
+        const lines = todayTxs.map((t) => `• *${t.item}*: ${formatRupiah(t.amount)} (${t.category || "Lainnya"})`).join("\n");
+        const statusNote = analytics.budget.todayRemaining < 0
+          ? `⚠️ _Jatah harian jebol minus ${formatRupiah(Math.abs(analytics.budget.todayRemaining))}. Mohon kendalikan diri Tuan._`
+          : `📉 Sisa jatah hari ini: *${todayRemStr}* (Jatah aman: ${safeDailyStr}/hari).`;
+
+        reply =
+          `📊 *Laporan Pengeluaran Hari Ini*\n\n` +
+          `Daftar transaksi hari ini:\n${lines}\n\n` +
+          `• Total Pengeluaran: *${todaySpentStr}*\n` +
+          `• ${statusNote}\n` +
+          `• Sisa Budget Siklus: *${remBudgetStr}* (${analytics.cycle.daysRemaining} hari ke gajian)`;
+      }
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_today_query" });
+    }
+
+    // 2. Tanya Sisa Uang / Budget / Saldo Bebas
+    const isBudgetQuery =
+      lower.includes("sisa budget") ||
+      lower.includes("sisa uang") ||
+      lower.includes("uangku tinggal berapa") ||
+      lower.includes("uang tinggal berapa") ||
+      lower.includes("sisa berapa") ||
+      lower.includes("saldo") ||
+      lower.includes("uang bebas");
+
+    if (isBudgetQuery) {
+      const remBudgetStr = formatRupiah(analytics.budget.remainingBudget);
+      const safeDailyStr = formatRupiah(analytics.budget.safeDailySpend);
+      const todaySpentStr = formatRupiah(analytics.budget.todaySpent);
+
+      const reply =
+        `💰 *Status Pundi-pundi Siklus Ini*\n\n` +
+        `• Sisa Budget Bebas: *${remBudgetStr}*\n` +
+        `• Hari ke Gajian: *${analytics.cycle.daysRemaining} hari* (gajian tanggal ${profile.paydayDate || 25})\n` +
+        `• Jatah Aman Harian: *${safeDailyStr}/hari*\n` +
+        `• Terpakai Hari Ini: *${todaySpentStr}*\n\n` +
+        `_Hamba terus mengawasi agar pundi-pundi Tuan tidak bocor sia-sia._`;
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_budget_query" });
+    }
+
+    // 3. Tanya Kapan Gajian
+    const isPaydayQuery =
+      lower.includes("kapan gajian") ||
+      lower.includes("gajian kapan") ||
+      lower.includes("berapa hari lagi gajian");
+
+    if (isPaydayQuery) {
+      const reply =
+        `📅 *Jadwal Gajian Tuan*\n\n` +
+        `Gajian Tuan dijadwalkan pada tanggal *${profile.paydayDate || 25}* (tersisa *${analytics.cycle.daysRemaining} hari* lagi).\n` +
+        `Sisa pundi-pundi siklus ini masih ada *${formatRupiah(analytics.budget.remainingBudget)}*.\n\n` +
+        `_Bersabarlah Tuan, hari kemenangan finansial sudah semakin dekat._`;
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_payday_query" });
+    }
+
+    // 4. Tanya Kemampuan Bot / Bantuan
+    const isBotCapabilityQuery =
+      lower.includes("bisa tanya apa") ||
+      lower.includes("tanya apa aja") ||
+      lower.includes("bisa apa aja") ||
+      lower.includes("bisa ngapain") ||
+      lower.includes("fitur apa");
+
+    if (isBotCapabilityQuery) {
+      const reply =
+        `*Kukuku... Hamba Diablo, pelayan finansial setia Tuan yang serba bisa:*\n\n` +
+        `1. 📝 *Catat Pengeluaran:* Ketik nominal langsung (misal: \`makan siang 16k beli kopi 14k\`, \`jus 35k\`) atau kirim foto struk/QRIS.\n` +
+        `2. 📊 *Cek Status Instan:* Tanya \`hari ini udah keluar berapa\`, \`sisa budget\`, \`kapan gajian\`, atau \`/rekap\`.\n` +
+        `3. 🧐 *Konsultasi Finansial:* Tuan bebas bertanya apa saja, misal: \`beli sepatu 800k aman ga?\`, \`mending nabung atau beli gadget?\`.\n` +
+        `4. 💰 *Menabung:* Ketik \`/nabung <pos> <nominal>\` (misal: \`/nabung darurat 200rb\`).\n` +
+        `5. 🌐 *Web Dashboard:* Ketik \`/login\` untuk membuka web interaktif.\n` +
+        `6. ↩️ *Batal Transaksi:* Ketik \`/undo\` jika salah mencatat.\n\n` +
+        `_Hamba selalu siap melayani setiap pertanyaan dan titah Tuan._`;
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_capability_query" });
+    }
+
+    // ==========================================
+    // ROUTING: ADVISOR vs EXPENSE LOGGER
+    // ==========================================
     const loggerThreadId = process.env.TELEGRAM_LOGGER_THREAD_ID ? Number(process.env.TELEGRAM_LOGGER_THREAD_ID) : null;
     const advisorThreadId = process.env.TELEGRAM_ADVISOR_THREAD_ID ? Number(process.env.TELEGRAM_ADVISOR_THREAD_ID) : null;
+
+    const hasNominal = hasExpenseNominal(text);
 
     let isAdvisorChat = false;
     if (advisorThreadId && threadId === advisorThreadId) {
@@ -356,8 +484,7 @@ export async function POST(req) {
     } else if (loggerThreadId && threadId === loggerThreadId) {
       isAdvisorChat = false;
     } else {
-      const lower = text.toLowerCase();
-      if (
+      const isQuestionOrAdvice =
         lower.startsWith("/tanya") ||
         lower.startsWith("/ask") ||
         lower.startsWith("/advisor") ||
@@ -367,13 +494,21 @@ export async function POST(req) {
         lower.includes("boleh beli") ||
         lower.includes("boros") ||
         lower.includes("gimana") ||
-        lower.includes("layak")
-      ) {
+        lower.includes("layak") ||
+        lower.includes("mending") ||
+        lower.includes("saran") ||
+        lower.includes("rekomendasi") ||
+        lower.includes("kenapa") ||
+        lower.includes("apakah") ||
+        lower.includes("bisa ga");
+
+      // Jika ada kata tanya/konsultasi ATAU tidak ada angka nominal pengeluaran sama sekali -> ADVISOR!
+      if (isQuestionOrAdvice || !hasNominal) {
         isAdvisorChat = true;
       }
     }
 
-    // ROUTE 1: Financial Advisor
+    // ROUTE 1: Financial Advisor / Konsultasi / Percakapan
     if (isAdvisorChat) {
       const cleanQuestion = text.replace(/^\/(?:tanya|ask|advisor)\s*/i, "").trim();
       const advResult = await askFinancialAdvisor(cleanQuestion, profile, analytics, transactions);
