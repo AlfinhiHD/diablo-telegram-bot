@@ -70,6 +70,16 @@ export async function POST(req) {
 
     const action = body.action;
 
+    if (action === "debug_ai") {
+      const { getConfig } = require("@/lib/bundled-config");
+      return NextResponse.json({
+        ok: true,
+        apiKeyLength: (getConfig("GEMINI_API_KEY") || "").length,
+        apiKeyPrefix: (getConfig("GEMINI_API_KEY") || "").slice(0, 7),
+        envKey: (process.env.GEMINI_API_KEY || "").slice(0, 7),
+      });
+    }
+
     if (action === "update_profile") {
       const updated = await saveUserProfile(userId, body.profile);
       return NextResponse.json({ ok: true, profile: updated });
