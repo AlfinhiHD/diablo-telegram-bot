@@ -256,18 +256,38 @@ export async function POST(req) {
         return NextResponse.json({ ok: true });
       }
       const num = parseNominalString(match[1], match[2]);
-      const nextPayday = match[3] ? Math.min(28, Math.max(1, Number(match[3]))) : profile.paydayDate;
+      const nextPayday = match[3] ? Math.min(28, Math.max(1, Number(match[3]))) : (profile?.paydayDate || 25);
       const updated = await saveUserProfile(userId, {
-        ...profile,
+        ...(profile || {}),
         monthlyIncome: num,
         paydayDate: nextPayday,
       });
       await sendTelegramMessage(
         chatId,
-        `Siap Tuan. Pendapatan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).`,
+        `Siap Tuan. Pendapatan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).\n\nPundi-pundi Tuan kini telah aktif! Tuan sudah bisa mencatat belanja (misal: \`kopi 25k qris\`) atau membuka [Web Dashboard](${appUrl()}/login).`,
         threadId
       );
       return NextResponse.json({ ok: true });
+    }
+
+    // WAJIB KONFIGURASI: Jika gaji belum diatur, kunci chat & arahkan setup!
+    const isConfigured = profile && Number(profile.monthlyIncome) > 0;
+    if (!isConfigured) {
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
+      const msg =
+        `⚠️ *Pundi-pundi Tuan Belum Dikonfigurasi!*\n\n` +
+        `Kukuku... Hamba belum dapat mencatat pengeluaran atau menganalisis keuangan sebelum Tuan mengatur pendapatan bulanan dan tanggal gajian Tuan.\n\n` +
+        `*Silakan pilih salah satu cara:*\n` +
+        `1. Klik link masuk ke Web Dashboard:\n👉 [Buka Pengaturan Web](${loginUrl})\n\n` +
+        `2. Atau atur langsung sekarang di chat ini:\nKetik: \`/setgaji <nominal> <tgl_gajian>\`\nContoh: \`/setgaji 8jt 25\``;
+
+      const markup = {
+        inline_keyboard: [[{ text: "⚙️ Atur Pundi-pundi Sekarang", url: loginUrl }]],
+      };
+
+      await sendTelegramMessage(chatId, msg, threadId, markup);
+      return NextResponse.json({ ok: true, note: "Unconfigured user blocked" });
     }
 
     const transactions = await getTransactions(userId, 200);
