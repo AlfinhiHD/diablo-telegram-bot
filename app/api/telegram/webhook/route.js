@@ -14,9 +14,23 @@ import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "../
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
 import { formatRupiah } from "../../../../lib/format.js";
 
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8749252504:AAGaK5CuaR7etKom0u99EQOLYX-XRS_gwIc";
+
 async function sendTelegramMessage(chatId, text, threadId = null, replyMarkup = null) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = BOT_TOKEN;
   if (!token) return false;
+
+  // Sanitasi button URLs jika ada
+  if (replyMarkup?.inline_keyboard) {
+    for (const row of replyMarkup.inline_keyboard) {
+      for (const btn of row) {
+        if (btn.url && !btn.url.startsWith("https://")) {
+          const pathOnly = btn.url.startsWith("http://localhost:3000") ? btn.url.replace("http://localhost:3000", "") : btn.url;
+          btn.url = "https://diablo-telegram-bot.vercel.app" + (pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`);
+        }
+      }
+    }
+  }
 
   const payload = {
     chat_id: chatId,
@@ -32,15 +46,30 @@ async function sendTelegramMessage(chatId, text, threadId = null, replyMarkup = 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return res.ok;
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      console.error("[Telegram] Send error with markup/markdown:", errJson);
+      // Fallback tanpa markdown & markup
+      const fallbackPayload = {
+        chat_id: chatId,
+        text: text.replace(/[*_`]/g, ""),
+      };
+      if (threadId) fallbackPayload.message_thread_id = threadId;
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackPayload),
+      });
+    }
+    return true;
   } catch (err) {
-    console.error("[Telegram] Send error:", err.message);
+    console.error("[Telegram] Network send error:", err.message);
     return false;
   }
 }
 
 async function fetchTelegramPhotoBase64(fileId) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN belum diset.");
 
   const infoRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
