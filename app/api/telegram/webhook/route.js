@@ -364,6 +364,13 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, mode: "logger_saved", count: savedItems.length });
   } catch (err) {
     console.error("[Telegram Webhook] Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    try {
+      const body = await req.clone().json().catch(() => ({}));
+      const msg = body?.message || body?.channel_post;
+      if (msg?.chat?.id) {
+        await sendTelegramMessage(msg.chat.id, `Maaf Tuan, terjadi kendala teknis: ${err.message}`, msg.message_thread_id);
+      }
+    } catch {}
+    return NextResponse.json({ ok: true, error: err.message });
   }
 }
