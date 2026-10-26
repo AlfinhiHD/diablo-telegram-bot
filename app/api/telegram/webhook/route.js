@@ -5,6 +5,7 @@ import {
   getTransactions,
   addTransaction,
   undoLastTransaction,
+  clearUserData,
   computeAnalytics,
   addAdvisorHistory,
   addToPot,
@@ -109,6 +110,7 @@ export async function POST(req) {
     const fromId = String(message.from?.id || chatId);
     const threadId = message.message_thread_id || null;
     const text = (message.text || message.caption || "").trim();
+    const lower = text.toLowerCase();
     const photos = message.photo || null;
 
     if (!text && !photos) {
@@ -251,14 +253,47 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
-    // Command: /setgaji <nominal> [tgl_gajian]
-    if (text.toLowerCase().startsWith("/setgaji")) {
-      const rawArg = text.replace(/^\/setgaji(?:@\S+)?\s*/i, "").trim();
-      const match = rawArg.match(/^([\d.,]+)\s*(jt|juta|rb|ribu|k)?(?:\s+(\d{1,2}))?/i);
+    // Command: /reset atau pesan minta hapus/clear data
+    const isResetRequest =
+      text === "/reset" ||
+      text.startsWith("/reset@") ||
+      /^(?:aku\s+mau\s+)?(?:semua(?:nya)?\s+di\s+)?(?:clear|reset|hapus\s+semua\s+data)(?:\s+dulu)?/i.test(lower) ||
+      lower.includes("clear history") ||
+      lower.includes("reset history") ||
+      lower.includes("hapus semua data") ||
+      lower.includes("hapus semua riwayat");
+
+    if (isResetRequest) {
+      await clearUserData(userId);
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
+      const reply =
+        `Siap Tuan. Seluruh data transaksi, riwayat, dan profil telah hamba bersihkan.\n\n` +
+        `Untuk mengatur ulang gaji & tanggal gajian:\n` +
+        `• Ketik: \`/setgaji <nominal> <tgl_gajian>\` (misal: \`/setgaji 6jt 25\`)\n` +
+        `• Atau buka [Web Dashboard](${loginUrl})`;
+
+      const markup = {
+        inline_keyboard: [[{ text: "⚙️ Atur Pundi-pundi", url: loginUrl }]],
+      };
+
+      await sendTelegramMessage(chatId, reply, threadId, markup);
+      return NextResponse.json({ ok: true, mode: "reset_done" });
+    }
+
+    // Command: /setgaji <nominal> [tgl_gajian] atau natural "gajiku 8jt 25"
+    const isSetGajiCmd = lower.startsWith("/setgaji");
+    const naturalGajiMatch = text.match(/^(?:atur\s+|set\s+)?gaji(?:ku)?\s+([\d.,]+)\s*(jt|juta|rb|ribu|k)?(?:\s+(?:tanggal|tgl)?\s*(\d{1,2}))?$/i);
+
+    if (isSetGajiCmd || naturalGajiMatch) {
+      const match = isSetGajiCmd
+        ? text.replace(/^\/setgaji(?:@\S+)?\s*/i, "").trim().match(/^([\d.,]+)\s*(jt|juta|rb|ribu|k)?(?:\s+(\d{1,2}))?/i)
+        : naturalGajiMatch;
+
       if (!match) {
         await sendTelegramMessage(
           chatId,
-          `Siap Tuan. Contoh:\n\`/setgaji 12jt 25\` (Gaji 12 juta, gajian tgl 25)`,
+          `Siap Tuan. Format:\n\`/setgaji <nominal> <tgl_gajian>\`\nContoh: \`/setgaji 8jt 25\``,
           threadId
         );
         return NextResponse.json({ ok: true });
@@ -272,7 +307,7 @@ export async function POST(req) {
       });
       await sendTelegramMessage(
         chatId,
-        `Siap Tuan. Pendapatan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).\n\nPundi-pundi Tuan kini telah aktif! Tuan sudah bisa mencatat belanja (misal: \`kopi 25k qris\`) atau membuka [Web Dashboard](${appUrl()}/login).`,
+        `Siap Tuan. Pendapatan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).\n\nPundi-pundi Tuan kini telah aktif!`,
         threadId
       );
       return NextResponse.json({ ok: true });
@@ -353,8 +388,6 @@ export async function POST(req) {
         return NextResponse.json({ ok: true });
       }
     }
-
-    const lower = text.toLowerCase();
 
     // ==========================================
     // FAST QUERY ENGINE (<50ms, Tanpa AI Delay)
@@ -514,7 +547,7 @@ export async function POST(req) {
       const advResult = await askFinancialAdvisor(cleanQuestion, profile, analytics, transactions);
       await addAdvisorHistory(userId, { question: cleanQuestion, reply: advResult.reply, verdict: advResult.verdict });
 
-      const reply = `*[${advResult.verdict}]* ${advResult.reply}`;
+      const reply = advResult.reply;
       await sendTelegramMessage(chatId, reply, threadId);
       return NextResponse.json({ ok: true, mode: "advisor" });
     }
