@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import DiabloAvatar from "@/components/DiabloAvatar";
 import QuickLogModal from "@/components/QuickLogModal";
+import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, formatShortDate } from "@/lib/format";
 import {
   Wallet,
@@ -16,36 +18,12 @@ import {
   ArrowUpRight,
   RefreshCw,
   Plus,
+  Coins,
 } from "lucide-react";
 
 export default function HomePage() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data, loading, error, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
-
-  async function loadData() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/diablo");
-      if (res.status === 401) {
-        window.location.href = "/login";
-        return;
-      }
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Gagal memuat data");
-      setData(json);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   async function handleToggleIntent(txId) {
     try {
@@ -54,7 +32,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "toggle_intent", txId }),
       });
-      if (res.ok) loadData();
+      if (res.ok) reload();
     } catch (e) {
       console.error(e);
     }
@@ -68,7 +46,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "delete_tx", txId }),
       });
-      if (res.ok) loadData();
+      if (res.ok) reload();
     } catch (e) {
       console.error(e);
     }
@@ -77,8 +55,8 @@ export default function HomePage() {
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-fintech-canvas flex flex-col items-center justify-center p-4">
-        <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin mb-3" />
-        <p className="text-xs text-slate-400">Menghubungkan ke pundi-pundi Tuan...</p>
+        <DiabloAvatar className="w-12 h-12 mb-3 animate-pulse" />
+        <p className="text-xs text-slate-400 font-mono">Menyiapkan pundi-pundi Tuan...</p>
       </div>
     );
   }
@@ -87,6 +65,9 @@ export default function HomePage() {
   const analytics = data?.analytics;
   const transactions = data?.transactions || [];
   const recentTx = transactions.slice(0, 5);
+
+  const displayName = profile?.ownerName || profile?.telegramName || (data?.userId === "1128526190" ? "Alfin" : "Tuan");
+  const telegramHandle = profile?.telegramUsername || (data?.userId === "1128526190" ? "nocelestial14" : "");
 
   const isConfigured = profile && profile.monthlyIncome > 0;
   const todayRemaining = analytics?.budget?.todayRemaining ?? 0;
@@ -100,7 +81,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
-      <Nav userId={data?.userId} onQuickLog={() => setQuickLogOpen(true)} />
+      <Nav userId={data?.userId} profile={data?.profile} onQuickLog={() => setQuickLogOpen(true)} />
 
       <main className="max-w-4xl mx-auto px-4 pt-6 space-y-6">
         {/* Onboarding Alert jika belum setup gaji */}
@@ -130,7 +111,12 @@ export default function HomePage() {
 
         {/* HERO CARD: 1 Pertanyaan Utama "Berapa boleh kupakai hari ini?" */}
         <section className="bento-card rounded-3xl p-6 sm:p-8 relative overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
+          {/* Subtle Decorative Background Butler Crest */}
+          <div className="absolute -right-6 -bottom-6 w-40 h-40 opacity-[0.07] pointer-events-none select-none">
+            <DiabloAvatar className="w-full h-full" />
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 relative z-10">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Boleh Dipakai Hari Ini
@@ -146,7 +132,11 @@ export default function HomePage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="text-slate-300 font-medium">
+                {displayName}
+              </span>
+              <span className="text-slate-600">•</span>
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
               <span>
                 {analytics?.cycle?.daysRemaining ?? 0} hari ke gajian (tgl {profile?.paydayDate || 25})
@@ -155,7 +145,7 @@ export default function HomePage() {
           </div>
 
           {/* Primary Big Metric */}
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 relative z-10">
             <h1
               className={`text-4xl sm:text-5xl font-extrabold tracking-tight font-heading ${
                 isOverbudget ? "text-rose-400" : "text-emerald-400"
@@ -166,7 +156,7 @@ export default function HomePage() {
           </div>
 
           {/* Breakdown description */}
-          <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+          <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 relative z-10">
             <div className="flex items-center gap-4">
               <span>
                 Jatah normal:{" "}

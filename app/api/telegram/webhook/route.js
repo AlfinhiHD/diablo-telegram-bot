@@ -161,7 +161,18 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
+    const fromUser = message.from;
+    const tgName = [fromUser?.first_name, fromUser?.last_name].filter(Boolean).join(" ");
+    const tgUsername = fromUser?.username || "";
+
     const profile = await getUserProfile(userId);
+    if (profile && (!profile.telegramUsername || !profile.telegramName || !profile.ownerName)) {
+      saveUserProfile(userId, {
+        ownerName: profile.ownerName || tgName || (userId === "1128526190" ? "Alfin" : ""),
+        telegramName: profile.telegramName || tgName,
+        telegramUsername: profile.telegramUsername || tgUsername || (userId === "1128526190" ? "nocelestial14" : ""),
+      }).catch(() => {});
+    }
 
     // Command: /start atau /help
     if (text === "/start" || text === "/help" || text.startsWith("/start@") || text.startsWith("/help@")) {

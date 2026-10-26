@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import DiabloAvatar from "./DiabloAvatar";
 import {
   Home,
   PiggyBank,
@@ -11,8 +12,10 @@ import {
   Send,
 } from "lucide-react";
 
-export default function Nav({ userId, onQuickLog }) {
+export default function Nav({ userId, profile, onQuickLog }) {
   const pathname = usePathname();
+  const displayName = profile?.ownerName || profile?.telegramName || (userId === "1128526190" ? "Alfin" : "Tuan");
+  const handle = profile?.telegramUsername || (userId === "1128526190" ? "nocelestial14" : "");
 
   const links = [
     { href: "/", label: "Beranda", icon: Home },
@@ -27,15 +30,34 @@ export default function Nav({ userId, onQuickLog }) {
       <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition">
-              <span className="font-bold text-base font-heading">D</span>
-            </div>
+            <DiabloAvatar className="w-9 h-9" showBadge={true} />
             <div>
               <div className="font-heading font-bold text-sm tracking-tight text-slate-100 flex items-center gap-2">
-                Diablo Finance
+                <span>Diablo Finance</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono hidden xs:inline-block">
+                  Butler
+                </span>
               </div>
-              <div className="text-[10px] text-slate-400 font-mono">
-                {userId ? `ID: ${userId}` : "Personal"}
+              <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                <span className="font-semibold text-slate-200 truncate max-w-[120px] sm:max-w-[180px]">
+                  {displayName}
+                </span>
+                {handle && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400 font-mono text-[10px] hidden sm:inline">
+                      @{handle}
+                    </span>
+                  </>
+                )}
+                {userId && (
+                  <>
+                    <span className="text-slate-600 hidden md:inline">•</span>
+                    <span className="text-slate-500 font-mono text-[9px] hidden md:inline">
+                      ID: {userId}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </Link>

@@ -36,9 +36,20 @@ export async function GET(req) {
       return NextResponse.json({ error: "Sesi tidak valid atau telah berakhir." }, { status: 401 });
     }
 
-    const profile = await getUserProfile(userId);
-    const transactions = await getTransactions(userId, 250);
-    const advisorHistory = await getAdvisorHistory(userId, 30);
+    const [profile, transactions, advisorHistory] = await Promise.all([
+      getUserProfile(userId),
+      getTransactions(userId, 250),
+      getAdvisorHistory(userId, 30),
+    ]);
+
+    if (String(userId) === "1128526190") {
+      if (!profile.ownerName) profile.ownerName = "Alfin";
+      if (!profile.telegramUsername) profile.telegramUsername = "nocelestial14";
+    }
+    if (!profile.ownerName && profile.telegramName) {
+      profile.ownerName = profile.telegramName;
+    }
+
     const analytics = computeAnalytics(profile, transactions);
 
     const systemStatus = {

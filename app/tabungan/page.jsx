@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
+import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah } from "@/lib/format";
 import {
   PiggyBank,
@@ -15,8 +16,7 @@ import {
 } from "lucide-react";
 
 export default function TabunganPage() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
 
   // Modal / Form state
@@ -30,27 +30,6 @@ export default function TabunganPage() {
   const [topUpPotId, setTopUpPotId] = useState(null);
   const [topUpAmount, setTopUpAmount] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-
-  async function loadData() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/diablo");
-      if (res.status === 401) {
-        window.location.href = "/login";
-        return;
-      }
-      const json = await res.json();
-      if (res.ok) setData(json);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const pots = data?.profile?.savingsPots || [];
   const totalSaved = pots.reduce((acc, p) => acc + (Number(p.saved) || 0), 0);
@@ -87,7 +66,7 @@ export default function TabunganPage() {
         setNewPotSaved("");
         setNewPotMonthly("");
         setIsAddOpen(false);
-        await loadData();
+        await reload();
       }
     } catch (err) {
       alert("Gagal menambahkan pos tabungan: " + err.message);
@@ -115,7 +94,7 @@ export default function TabunganPage() {
       if (res.ok) {
         setTopUpPotId(null);
         setTopUpAmount("");
-        await loadData();
+        await reload();
       } else {
         const err = await res.json();
         alert(err.error || "Gagal mengisi tabungan");
@@ -139,7 +118,7 @@ export default function TabunganPage() {
           pots: updatedPots,
         }),
       });
-      if (res.ok) await loadData();
+      if (res.ok) await reload();
     } catch (e) {
       console.error(e);
     }
@@ -155,7 +134,7 @@ export default function TabunganPage() {
 
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
-      <Nav userId={data?.userId} onQuickLog={() => setQuickLogOpen(true)} />
+      <Nav userId={data?.userId} profile={data?.profile} onQuickLog={() => setQuickLogOpen(true)} />
 
       <main className="max-w-4xl mx-auto px-4 pt-6 space-y-6">
         {/* Header Title */}
@@ -451,7 +430,7 @@ export default function TabunganPage() {
       <QuickLogModal
         isOpen={quickLogOpen}
         onClose={() => setQuickLogOpen(false)}
-        onSuccess={() => loadData()}
+        onSuccess={() => reload()}
       />
     </div>
   );
