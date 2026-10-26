@@ -188,10 +188,11 @@ export async function POST(req) {
       const welcome =
         `*Siap Tuan. Hamba Diablo, siap menjaga pundi-pundi Tuan.*\n\n` +
         `• *Catat Pengeluaran:* Ketik langsung \`kopi 25k qris\` atau kirim foto struk.\n` +
-        `• *Tanya Diablo:* Ketik \`beli sepatu 1jt aman ga?\` atau \`/tanya ...\`\n` +
+        `• *Tanya Diablo:* Ketik \`beli sepatu 1jt aman ga?\` atau tanya apa saja.\n` +
         `• *Isi Tabungan:* \`/nabung <nama pos> <nominal>\` (misal: \`/nabung darurat 200rb\`)\n` +
+        `• *Atur Gaji:* \`/setgaji <nominal> <tgl>\` (misal: \`/setgaji 6jt 25\`)\n` +
         `• *Web Dashboard:* Ketik \`/login\` untuk membuka web.\n` +
-        `• *Menu Cepat:* \`/rekap\`, \`/undo\`, \`/id\``;
+        `• *Menu Cepat:* \`/rekap\`, \`/undo\`, \`/reset\`, \`/id\``;
 
       await sendTelegramMessage(chatId, welcome, threadId);
       return NextResponse.json({ ok: true });
