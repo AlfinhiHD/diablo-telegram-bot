@@ -84,12 +84,56 @@ async function fetchTelegramPhotoBase64(fileId) {
 }
 
 function parseNominalString(str, unitStr = "") {
-  let num = parseFloat(String(str).replace(/\./g, "").replace(",", "."));
-  if (isNaN(num)) return 0;
+  const rawStr = String(str).trim();
   const unit = (unitStr || "").toLowerCase().trim();
-  if (unit === "jt" || unit === "juta") num *= 1_000_000;
-  else if (unit === "rb" || unit === "ribu" || unit === "k") num *= 1_000;
+  let num = 0;
+
+  if (unit === "jt" || unit === "juta") {
+    const decStr = rawStr.replace(",", ".");
+    num = parseFloat(decStr) * 1_000_000;
+  } else if (unit === "rb" || unit === "ribu" || unit === "k") {
+    const decStr = rawStr.replace(",", ".");
+    num = parseFloat(decStr) * 1_000;
+  } else {
+    num = parseFloat(rawStr.replace(/\./g, "").replace(",", "."));
+  }
+
+  if (isNaN(num)) return 0;
   return Math.round(num);
+}
+
+function parseMultiPockets(text) {
+  const lines = text.split(/\r?\n/);
+  const pockets = [];
+  let currentGroup = "";
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const headerMatch = trimmed.match(/^(?:uang\s+di\s+|di\s+)?([a-zA-Z0-9\s]+)\s*:\s*$/i);
+    if (headerMatch) {
+      currentGroup = headerMatch[1].replace(/^(?:uang\s+di\s+|di\s+)/i, "").trim();
+      continue;
+    }
+
+    const m = trimmed.match(/^[-*•]?\s*(?:([^:\d]+?)\s*:\s*)?([\d.,]+)\s*(jt|juta|rb|ribu|k)\b/i);
+    if (m && m[2]) {
+      let name = (m[1] || "").trim();
+      if (!name && currentGroup) {
+        name = currentGroup;
+      } else if (name && currentGroup && !name.toLowerCase().includes(currentGroup.toLowerCase())) {
+        name = currentGroup + " - " + name;
+      }
+      if (!name) name = "Kantong";
+
+      const amt = parseNominalString(m[2], m[3]);
+      if (amt > 0) {
+        pockets.push({ name, amount: amt });
+      }
+    }
+  }
+  return pockets;
 }
 
 function hasExpenseNominal(str) {
@@ -139,26 +183,42 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
-    // Command: /login
-    if (text === "/login" || text.startsWith("/login@")) {
+    // Web Dashboard request (Command: /login atau bahasa wajar: "mau buka web dashboard ku dong", "link web", dll)
+    const isWebLoginRequest =
+      text === "/login" ||
+      text.startsWith("/login@") ||
+      lower.includes("buka web") ||
+      lower.includes("buka dashboard") ||
+      lower.includes("web dashboard") ||
+      lower.includes("link web") ||
+      lower.includes("link login") ||
+      lower.includes("link dashboard") ||
+      lower.includes("masuk web") ||
+      lower.includes("masuk dashboard") ||
+      lower.includes("akses web") ||
+      lower.includes("akses dashboard") ||
+      lower.includes("minta link") ||
+      lower.includes("buka pundi") ||
+      /^(?:mau\s+|tolong\s+|bisa\s+)?(?:buka|masuk|akses|lihat|minta\s+link|link)?\s*(?:web\s+dashboard|dashboard|web(?:\s+ku)?|pundi|login)\b/i.test(lower);
+
+    if (isWebLoginRequest) {
       const token = await createLoginToken(userId);
       const baseUrl = appUrl();
       const loginUrl = `${baseUrl}/auth/verify?token=${token}`;
 
       const reply =
-        `*Kukuku... Akses Rahasia Web Dashboard Tuan:*\n\n` +
-        `Klik link di bawah ini untuk masuk ke dashboard tanpa password (link berlaku selama 10 menit):\n\n` +
-        `👉 [Buka Diablo Finance](${loginUrl})\n\n` +
-        `_Catatan: Jangan teruskan pesan atau link ini kepada orang lain demi keamanan pundi-pundi Tuan._`;
+        `Siap Tuan, ini tautan langsung menuju Web Dashboard Tuan (berlaku 10 menit):\n\n` +
+        `👉 [Buka Web Dashboard Diablo](${loginUrl})\n\n` +
+        `_Silakan klik tombol di bawah untuk langsung membukanya._`;
 
       const markup = {
         inline_keyboard: [
-          [{ text: "🔑 Masuk ke Web Dashboard", url: loginUrl }],
+          [{ text: "🔑 Buka Web Dashboard", url: loginUrl }],
         ],
       };
 
       await sendTelegramMessage(chatId, reply, threadId, markup);
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, mode: "web_dashboard_link" });
     }
 
     const fromUser = message.from;
@@ -196,39 +256,64 @@ export async function POST(req) {
         return NextResponse.json({ ok: true });
       }
 
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
       const welcome =
-        `*Siap Tuan. Hamba Diablo, siap menjaga pundi-pundi Tuan.*\n\n` +
-        `• *Catat Pengeluaran:* Ketik langsung \`kopi 25k qris\` atau kirim foto struk.\n` +
-        `• *Tanya Diablo:* Ketik \`beli sepatu 1jt aman ga?\` atau tanya apa saja.\n` +
-        `• *Isi Tabungan:* \`/nabung <nama pos> <nominal>\` (misal: \`/nabung darurat 200rb\`)\n` +
-        `• *Atur Gaji:* \`/setgaji <nominal> <tgl>\` (misal: \`/setgaji 6jt 25\`)\n` +
-        `• *Web Dashboard:* Ketik \`/login\` untuk membuka web.\n` +
-        `• *Menu Cepat:* \`/rekap\`, \`/undo\`, \`/reset\`, \`/id\``;
+        `*Siap Tuan. Hamba Diablo, pelayan setia pundi-pundi Tuan.*\n\n` +
+        `Tuan bisa bicara santai tanpa perlu menghafal perintah kaku:\n` +
+        `• *Catat Belanja:* Cukup ketik nominal santai, misal: \`makan siang 16k beli kopi 14k\` atau kirim foto struk.\n` +
+        `• *Tanya Bebas:* \`beli sepatu 1jt aman ga?\` atau \`hari ini udah keluar berapa?\`.\n` +
+        `• *Status Keuangan:* Ketik \`rekap\` atau \`sisa budget\`.\n` +
+        `• *Menabung:* Ketik \`nabung booster 200rb\` atau \`nabung darurat 500k\`.\n` +
+        `• *Batal:* Ketik \`batal\` atau \`undo\` jika keliru mencatat.\n` +
+        `• *Web Dashboard:* Ketik \`buka dashboard\` atau klik tombol di bawah.\n\n` +
+        `_Tuan cukup bicara wajar pada hamba, hamba yang siap mengurusnya._`;
 
-      await sendTelegramMessage(chatId, welcome, threadId);
+      const markup = {
+        inline_keyboard: [
+          [{ text: "🔑 Buka Web Dashboard", url: loginUrl }],
+        ],
+      };
+
+      await sendTelegramMessage(chatId, welcome, threadId, markup);
       return NextResponse.json({ ok: true });
     }
 
-    // Command: /undo
-    if (text === "/undo" || text.startsWith("/undo@")) {
+    // Command: /undo atau natural "undo", "batal", "batalin", "salah catat"
+    const isUndoRequest =
+      text === "/undo" ||
+      text.startsWith("/undo@") ||
+      lower === "undo" ||
+      lower === "batal" ||
+      lower === "batalin" ||
+      lower === "batalin dong" ||
+      /^(?:tolong\s+)?(?:undo|batal(?:kan)?|hapus\s+transaksi\s+terakhir|salah\s+catat)\b/i.test(lower);
+
+    if (isUndoRequest) {
       const removed = await undoLastTransaction(userId);
       const reply = removed
         ? `Siap Tuan. Catatan terakhir (*${removed.item}* - ${formatRupiah(removed.amount)}) telah hamba batalkan.`
         : `Maaf Tuan, tidak ada transaksi yang bisa dibatalkan.`;
       await sendTelegramMessage(chatId, reply, threadId);
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, mode: "undo_done" });
     }
 
-    // Command: /nabung <nama pos> <nominal>
-    if (text.toLowerCase().startsWith("/nabung")) {
-      const raw = text.replace(/^\/nabung(?:@\S+)?\s*/i, "").trim();
+    // Command: /nabung <nama pos> <nominal> atau natural "nabung booster 200rb"
+    const isNabungCmd =
+      lower.startsWith("/nabung") ||
+      lower.startsWith("nabung ") ||
+      lower.startsWith("isi tabungan ") ||
+      lower.startsWith("setor tabungan ");
+
+    if (isNabungCmd) {
+      const raw = text.replace(/^(?:\/nabung(?:@\S+)?|nabung|isi\s+tabungan|setor\s+tabungan)\s*/i, "").trim();
       const match = raw.match(/^(.+?)\s+([\d.,]+)\s*(jt|juta|rb|ribu|k)?$/i);
 
       if (!match) {
         const potsList = (profile.savingsPots || []).map((p) => `• *${p.name}*`).join("\n");
         await sendTelegramMessage(
           chatId,
-          `Siap Tuan. Format menabung:\n\`/nabung <nama pos> <nominal>\`\nContoh: \`/nabung darurat 250rb\`\n\nPos tabungan Tuan saat ini:\n${potsList || "- Belum ada pos (buat di Web Dashboard /login)"}`,
+          `Siap Tuan. Format menabung:\n\`nabung <nama pos> <nominal>\`\nContoh: \`nabung booster 250rb\`\n\nPos tabungan Tuan saat ini:\n${potsList || "- Belum ada pos (buat di Web Dashboard)"}`,
           threadId
         );
         return NextResponse.json({ ok: true });
@@ -246,7 +331,7 @@ export async function POST(req) {
         const available = (profile.savingsPots || []).map((p) => `*${p.name}*`).join(", ");
         await sendTelegramMessage(
           chatId,
-          `Maaf Tuan, pos tabungan "${potName}" tidak ditemukan.\nPos yang tersedia: ${available || "Belum ada"}.\n\nTuan dapat menambah pos tabungan baru di Web Dashboard (\`/login\`).`,
+          `Maaf Tuan, pos tabungan "${potName}" tidak ditemukan.\nPos yang tersedia: ${available || "Belum ada"}.\n\nTuan dapat menambah pos tabungan baru di Web Dashboard.`,
           threadId
         );
         return NextResponse.json({ ok: true });
@@ -282,7 +367,7 @@ export async function POST(req) {
       const reply =
         `Siap Tuan. Seluruh data transaksi, riwayat, dan profil telah hamba bersihkan.\n\n` +
         `Untuk mengatur ulang gaji & tanggal gajian:\n` +
-        `• Ketik: \`/setgaji <nominal> <tgl_gajian>\` (misal: \`/setgaji 6jt 25\`)\n` +
+        `• Cukup ketik: \`gajiku 8jt 25\` atau \`set budget 10jt\`\n` +
         `• Atau buka [Web Dashboard](${loginUrl})`;
 
       const markup = {
@@ -293,9 +378,51 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, mode: "reset_done" });
     }
 
-    // Command: /setgaji <nominal> [tgl_gajian] atau natural "gajiku 8jt 25"
+    // Deteksi pengaturan multi-kantong / rekening (seperti Bank Saqu, Wondr, dll)
+    const multiPockets = parseMultiPockets(text);
+    const isMultiPocketSetup =
+      multiPockets.length >= 2 &&
+      (lower.includes("budget") || lower.includes("set") || lower.includes("atur") || lower.includes("saldo") || lower.includes("uang"));
+
+    if (isMultiPocketSetup) {
+      const totalAmount = multiPockets.reduce((sum, p) => sum + p.amount, 0);
+      const newSavingsPots = multiPockets.map((p, idx) => ({
+        id: `pot_${idx + 1}_${Date.now().toString(36)}`,
+        name: p.name,
+        target: p.amount,
+        saved: p.amount,
+        monthly: 0,
+        deadline: "",
+      }));
+
+      const updated = await saveUserProfile(userId, {
+        ...(profile || {}),
+        monthlyIncome: totalAmount,
+        savingsPots: newSavingsPots,
+      });
+
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
+
+      const lines = multiPockets.map((p) => `• *${p.name}*: ${formatRupiah(p.amount)}`).join("\n");
+      const reply =
+        `Siap Tuan. Pundi-pundi Tuan telah berhasil hamba atur sesuai rincian:\n\n` +
+        `${lines}\n\n` +
+        `💰 *Total Budget:* *${formatRupiah(totalAmount)}*\n` +
+        `📅 *Tanggal Gajian:* Tanggal *${updated.paydayDate || 25}*\n\n` +
+        `Semua pos tabungan & saldo telah tercatat rapi di Web Dashboard Tuan.`;
+
+      const markup = {
+        inline_keyboard: [[{ text: "🔑 Buka Web Dashboard", url: loginUrl }]],
+      };
+
+      await sendTelegramMessage(chatId, reply, threadId, markup);
+      return NextResponse.json({ ok: true, mode: "multi_pockets_set" });
+    }
+
+    // Command: /setgaji <nominal> [tgl_gajian] atau natural "gajiku 8jt 25", "set budget 10jt"
     const isSetGajiCmd = lower.startsWith("/setgaji");
-    const naturalGajiMatch = text.match(/^(?:atur\s+|set\s+)?gaji(?:ku)?\s+([\d.,]+)\s*(jt|juta|rb|ribu|k)?(?:\s+(?:tanggal|tgl)?\s*(\d{1,2}))?$/i);
+    const naturalGajiMatch = text.match(/^(?:atur\s+|set\s+)?(?:gaji|budget|pendapatan|penghasilan|saldo)(?:ku)?\s+([\d.,]+)\s*(jt|juta|rb|ribu|k)?(?:\s+(?:tanggal|tgl)?\s*(\d{1,2}))?$/i);
 
     if (isSetGajiCmd || naturalGajiMatch) {
       const match = isSetGajiCmd
@@ -305,7 +432,7 @@ export async function POST(req) {
       if (!match) {
         await sendTelegramMessage(
           chatId,
-          `Siap Tuan. Format:\n\`/setgaji <nominal> <tgl_gajian>\`\nContoh: \`/setgaji 8jt 25\``,
+          `Siap Tuan. Format:\n\`gajiku <nominal> <tgl_gajian>\` atau \`set budget <nominal>\`\nContoh: \`gajiku 8jt 25\` atau \`set budget 10jt\``,
           threadId
         );
         return NextResponse.json({ ok: true });
@@ -319,7 +446,7 @@ export async function POST(req) {
       });
       await sendTelegramMessage(
         chatId,
-        `Siap Tuan. Pendapatan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).\n\nPundi-pundi Tuan kini telah aktif!`,
+        `Siap Tuan. Budget & pendapatan Tuan diperbarui menjadi *${formatRupiah(updated.monthlyIncome)}* (Gajian tanggal *${updated.paydayDate}*).\n\nPundi-pundi Tuan kini telah aktif!`,
         threadId
       );
       return NextResponse.json({ ok: true });
@@ -348,8 +475,21 @@ export async function POST(req) {
     const transactions = await getTransactions(userId, 200);
     const analytics = computeAnalytics(profile, transactions);
 
-    // Command: /rekap
-    if (text === "/rekap" || text.startsWith("/rekap@")) {
+    // Command: /rekap atau bahasa wajar: "rekap dong", "status keuangan", "laporan", dll
+    const isRekapRequest =
+      text === "/rekap" ||
+      text.startsWith("/rekap@") ||
+      lower === "rekap" ||
+      lower === "rekap dong" ||
+      lower === "cek rekap" ||
+      lower === "laporan" ||
+      lower === "laporan keuangan" ||
+      lower === "status keuangan" ||
+      lower === "ringkasan pundi" ||
+      lower.includes("rekap pundi") ||
+      lower.includes("rekap keuangan");
+
+    if (isRekapRequest) {
       const rem = formatRupiah(analytics.budget.remainingBudget);
       const safeDaily = formatRupiah(analytics.budget.safeDailySpend);
       const todaySpent = formatRupiah(analytics.budget.todaySpent);
@@ -492,26 +632,42 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, mode: "fast_payday_query" });
     }
 
-    // 4. Tanya Kemampuan Bot / Bantuan
+    // 4. Tanya Kemampuan Bot / Bantuan / Cara Pakai
     const isBotCapabilityQuery =
       lower.includes("bisa tanya apa") ||
       lower.includes("tanya apa aja") ||
       lower.includes("bisa apa aja") ||
       lower.includes("bisa ngapain") ||
-      lower.includes("fitur apa");
+      lower.includes("fitur apa") ||
+      lower.includes("cara pakai") ||
+      lower.includes("cara pakenya") ||
+      lower.includes("gimana pakainya") ||
+      lower.includes("gimana pakenya") ||
+      lower.includes("bingung") ||
+      lower.includes("panduan") ||
+      lower.includes("bantuan");
 
     if (isBotCapabilityQuery) {
-      const reply =
-        `*Kukuku... Hamba Diablo, pelayan finansial setia Tuan yang serba bisa:*\n\n` +
-        `1. 📝 *Catat Pengeluaran:* Ketik nominal langsung (misal: \`makan siang 16k beli kopi 14k\`, \`jus 35k\`) atau kirim foto struk/QRIS.\n` +
-        `2. 📊 *Cek Status Instan:* Tanya \`hari ini udah keluar berapa\`, \`sisa budget\`, \`kapan gajian\`, atau \`/rekap\`.\n` +
-        `3. 🧐 *Konsultasi Finansial:* Tuan bebas bertanya apa saja, misal: \`beli sepatu 800k aman ga?\`, \`mending nabung atau beli gadget?\`.\n` +
-        `4. 💰 *Menabung:* Ketik \`/nabung <pos> <nominal>\` (misal: \`/nabung darurat 200rb\`).\n` +
-        `5. 🌐 *Web Dashboard:* Ketik \`/login\` untuk membuka web interaktif.\n` +
-        `6. ↩️ *Batal Transaksi:* Ketik \`/undo\` jika salah mencatat.\n\n` +
-        `_Hamba selalu siap melayani setiap pertanyaan dan titah Tuan._`;
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
 
-      await sendTelegramMessage(chatId, reply, threadId);
+      const reply =
+        `Siap Tuan. Hamba Diablo siap melayani keuangan Tuan dengan cara santai tanpa perintah kaku:\n\n` +
+        `1. 📝 *Catat Pengeluaran:* Ketik nominal santai (misal: \`makan siang 16k beli kopi 14k\`, \`jus 35k\`) atau kirim foto struk/QRIS.\n` +
+        `2. 📊 *Cek Status:* Cukup tanya \`hari ini udah keluar berapa\`, \`sisa budget\`, \`rekap\`, atau \`kapan gajian\`.\n` +
+        `3. 🧐 *Konsultasi:* Bebas tanya \`beli sneakers 1jt aman ga?\` atau \`mending nabung atau beli gadget?\`.\n` +
+        `4. 💰 *Menabung:* Ketik \`nabung <nama pos> <nominal>\` (misal: \`nabung booster 200rb\`).\n` +
+        `5. 🌐 *Web Dashboard:* Ketik \`buka dashboard\` atau klik tombol di bawah.\n` +
+        `6. ↩️ *Batal Transaksi:* Ketik \`undo\` atau \`batal\` jika keliru mencatat.\n\n` +
+        `_Tuan tidak perlu repot menghafal perintah kaku garis miring (/), cukup chat santai saja pada hamba._`;
+
+      const markup = {
+        inline_keyboard: [
+          [{ text: "🔑 Buka Web Dashboard", url: loginUrl }],
+        ],
+      };
+
+      await sendTelegramMessage(chatId, reply, threadId, markup);
       return NextResponse.json({ ok: true, mode: "fast_capability_query" });
     }
 
