@@ -155,6 +155,7 @@ export async function POST(req) {
     const threadId = message.message_thread_id || null;
     const text = (message.text || message.caption || "").trim();
     const lower = text.toLowerCase();
+    const hasNominal = hasExpenseNominal(text);
     const photos = message.photo || null;
 
     if (!text && !photos) {
@@ -545,7 +546,44 @@ export async function POST(req) {
     // FAST QUERY ENGINE (<50ms, Tanpa AI Delay)
     // ==========================================
 
-    // 1. Tanya Pengeluaran Hari Ini / Rekap Hari Ini
+    // 1. Tanya Pengeluaran Kemarin / Hari Tertentu / Hari Ini
+    const isPastQuery =
+      !hasNominal &&
+      (lower.includes("kemarin") || lower.includes("kemaren") || lower.includes("hari selasa") || lower.includes("hari rabu") || lower.includes("hari kamis") || lower.includes("hari jumat") || lower.includes("hari sabtu") || lower.includes("hari minggu") || lower.includes("hari senin") || lower.includes("tgl ") || lower.includes("tanggal ")) &&
+      (lower.includes("keluar") || lower.includes("habis") || lower.includes("berapa") || lower.includes("belanja") || lower.includes("catat") || lower.includes("rekap"));
+
+    if (isPastQuery) {
+      const { parseNaturalDate } = await import("../../../../lib/diablo-ai.js");
+      const { date: targetDate } = parseNaturalDate(text);
+      const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      const endOfDay = new Date(startOfDay.getTime() + 86_400_000);
+
+      const dayTxs = transactions.filter((t) => {
+        const d = new Date(t.createdAt);
+        return d >= startOfDay && d < endOfDay;
+      });
+
+      const daySpent = dayTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      const dateName = targetDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+
+      let reply = "";
+      if (dayTxs.length === 0) {
+        reply =
+          `Siap Tuan. Pada *${dateName}*, Tuan *tidak mencatat pengeluaran* apapun.\n\n` +
+          `• Sisa budget siklus saat ini: *${formatRupiah(analytics.budget.remainingBudget)}*`;
+      } else {
+        const lines = dayTxs.map((t) => `• *${t.item}*: ${formatRupiah(t.amount)} (${t.category || "Lainnya"})`).join("\n");
+        reply =
+          `📊 *Laporan Pengeluaran (${dateName})*\n\n` +
+          `Daftar transaksi:\n${lines}\n\n` +
+          `• Total Terpakai: *${formatRupiah(daySpent)}*\n` +
+          `• Sisa Budget Siklus: *${formatRupiah(analytics.budget.remainingBudget)}*`;
+      }
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_past_query" });
+    }
+
     const isTodayQuery =
       (lower.includes("hari ini") && (lower.includes("keluar") || lower.includes("habis") || lower.includes("berapa") || lower.includes("belanja") || lower.includes("catat"))) ||
       lower.includes("udah keluar berapa") ||
@@ -677,8 +715,6 @@ export async function POST(req) {
     const loggerThreadId = process.env.TELEGRAM_LOGGER_THREAD_ID ? Number(process.env.TELEGRAM_LOGGER_THREAD_ID) : null;
     const advisorThreadId = process.env.TELEGRAM_ADVISOR_THREAD_ID ? Number(process.env.TELEGRAM_ADVISOR_THREAD_ID) : null;
 
-    const hasNominal = hasExpenseNominal(text);
-
     let isAdvisorChat = false;
     if (advisorThreadId && threadId === advisorThreadId) {
       isAdvisorChat = true;
@@ -725,7 +761,7 @@ export async function POST(req) {
     if (!items || items.length === 0) {
       await sendTelegramMessage(
         chatId,
-        `Maaf Tuan, sebutkan nominal pengeluaran agar bisa hamba catat. Contoh: \`kopi 25k qris\``,
+        `Maaf Tuan, sebutkan nominal pengeluaran agar bisa hamba catat. Contoh: \`kopi 25k qris\` atau \`makan soto 15k kemarin\``,
         threadId
       );
       return NextResponse.json({ ok: true, mode: "logger_empty" });
@@ -739,12 +775,26 @@ export async function POST(req) {
     const updatedAnalytics = computeAnalytics(profile, [...savedItems, ...transactions]);
     const lines = savedItems.map((s) => `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent})`);
     const todayRem = updatedAnalytics.budget.todayRemaining;
-    const footerNote =
-      todayRem < 0
-        ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
-        : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`;
 
-    const ack = `Siap Tuan, tercatat:\n${lines.join("\n")}\n\n${footerNote}`;
+    // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus
+    const txDate = new Date(savedItems[0]?.createdAt || Date.now());
+    const now = new Date();
+    const isSameDay =
+      txDate.getFullYear() === now.getFullYear() &&
+      txDate.getMonth() === now.getMonth() &&
+      txDate.getDate() === now.getDate();
+
+    const dateLabel = isSameDay
+      ? ""
+      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })}*)`;
+
+    const footerNote = isSameDay
+      ? todayRem < 0
+        ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
+        : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`
+      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`;
+
+    const ack = `Siap Tuan, tercatat${dateLabel ? " " + dateLabel : ""}:\n${lines.join("\n")}\n\n${footerNote}`;
     await sendTelegramMessage(chatId, ack, threadId);
     return NextResponse.json({ ok: true, mode: "logger_saved", count: savedItems.length });
   } catch (err) {
