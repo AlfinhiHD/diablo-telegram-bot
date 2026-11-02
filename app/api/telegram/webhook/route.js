@@ -639,11 +639,18 @@ export async function POST(req) {
     const isBudgetQuery =
       lower.includes("sisa budget") ||
       lower.includes("sisa uang") ||
+      lower.includes("sisa duit") ||
       lower.includes("uangku tinggal berapa") ||
       lower.includes("uang tinggal berapa") ||
+      lower.includes("duit tinggal berapa") ||
+      lower.includes("uangku sisa berapa") ||
+      lower.includes("duitku sisa berapa") ||
       lower.includes("sisa berapa") ||
       lower.includes("saldo") ||
-      lower.includes("uang bebas");
+      lower.includes("uang bebas") ||
+      lower.includes("sisa pundi") ||
+      /(?:sisa|tinggal berapa)\s*(?:uang|budget|duit|dana|saldo|pundi)/i.test(lower) ||
+      /(?:uang|budget|duit|saldo|pundi)\s*(?:ku\s*)?(?:sisa|tinggal)\s*berapa/i.test(lower);
 
     if (isBudgetQuery) {
       const remBudgetStr = formatRupiah(analytics.budget.remainingBudget);
