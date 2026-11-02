@@ -14,8 +14,9 @@ import {
 import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "../../../../lib/diablo-ai.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
 import { formatRupiah } from "../../../../lib/format.js";
+import { getConfig } from "../../../../lib/bundled-config.js";
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8749252504:AAGaK5CuaR7etKom0u99EQOLYX-XRS_gwIc";
+const BOT_TOKEN = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
 
 async function sendTelegramMessage(chatId, text, threadId = null, replyMarkup = null) {
   const token = BOT_TOKEN;
