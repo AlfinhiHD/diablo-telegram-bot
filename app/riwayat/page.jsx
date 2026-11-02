@@ -113,8 +113,8 @@ export default function RiwayatPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1.5 self-start sm:self-auto">
-            {["ALL", "NEED", "WANT"].map((intent) => {
+          <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+            {["ALL", "NEED", "WANT", "GIFT", "ASSET"].map((intent) => {
               const active = filterIntent === intent;
               return (
                 <button
@@ -172,11 +172,15 @@ export default function RiwayatPage() {
                         <div className="flex items-center gap-3 min-w-0">
                           <button
                             onClick={() => handleToggleIntent(tx.id)}
-                            title="Klik untuk ubah NEED / WANT"
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition ${
+                            title="Klik untuk ubah status (NEED / WANT / GIFT / ASSET)"
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border ${
                               tx.intent === "NEED"
-                                ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25"
-                                : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25"
+                                ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border-blue-500/20"
+                                : tx.intent === "GIFT"
+                                ? "bg-fuchsia-500/15 text-fuchsia-400 hover:bg-fuchsia-500/25 border-fuchsia-500/20"
+                                : tx.intent === "ASSET"
+                                ? "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border-sky-500/20"
+                                : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border-amber-500/20"
                             }`}
                           >
                             {tx.intent}

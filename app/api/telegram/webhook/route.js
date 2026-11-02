@@ -141,6 +141,7 @@ function hasExpenseNominal(str) {
   return (
     /(?:rp\.?\s*)?\b\d+(?:[.,]\d+)?\s*(?:k|rb|ribu|jt|juta)\b/i.test(str) ||
     /(?:rp\.?\s*)\d+/i.test(str) ||
+    /\b\d{1,3}(?:[.,]\d{3})+\b/.test(str) ||
     /\b\d{4,9}\b/.test(str)
   );
 }
@@ -185,10 +186,15 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
-    // Web Dashboard request (Command: /login atau bahasa wajar: "mau buka web dashboard ku dong", "link web", dll)
+    // Web Dashboard request (Command: /login atau bahasa wajar: "website dong", "mau buka web dashboard ku dong", "link web", dll)
     const isWebLoginRequest =
       text === "/login" ||
       text.startsWith("/login@") ||
+      lower === "web" ||
+      lower === "website" ||
+      lower === "dashboard" ||
+      lower === "login" ||
+      lower.includes("website") ||
       lower.includes("buka web") ||
       lower.includes("buka dashboard") ||
       lower.includes("web dashboard") ||
@@ -201,7 +207,9 @@ export async function POST(req) {
       lower.includes("akses dashboard") ||
       lower.includes("minta link") ||
       lower.includes("buka pundi") ||
-      /^(?:mau\s+|tolong\s+|bisa\s+)?(?:buka|masuk|akses|lihat|minta\s+link|link)?\s*(?:web\s+dashboard|dashboard|web(?:\s+ku)?|pundi|login)\b/i.test(lower);
+      lower.includes("web dong") ||
+      lower.includes("dashboard dong") ||
+      /^(?:mau\s+|tolong\s+|bisa\s+)?(?:buka|masuk|akses|lihat|minta\s+link|link)?\s*(?:web\s+dashboard|dashboard|web(?:\s+ku)?|website(?:\s+ku)?|pundi|login)\b/i.test(lower);
 
     if (isWebLoginRequest) {
       const token = await createLoginToken(userId);
