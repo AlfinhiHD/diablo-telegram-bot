@@ -191,6 +191,18 @@ export default function RiwayatPage() {
                               {tx.item}
                             </div>
                             <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                              {tx.createdAt && (
+                                <>
+                                  <span className="text-slate-400 font-mono">
+                                    {new Date(tx.createdAt).toLocaleTimeString("id-ID", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      timeZone: "Asia/Jakarta",
+                                    })}
+                                  </span>
+                                  <span>•</span>
+                                </>
+                              )}
                               <span>{tx.category}</span>
                               {tx.paymentMethod && (
                                 <>

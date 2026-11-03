@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Plus,
   Coins,
+  Clock,
 } from "lucide-react";
 
 export default function HomePage() {
@@ -275,6 +276,59 @@ export default function HomePage() {
             )}
           </div>
         </section>
+
+        {/* POLA JAM BELANJA / JAM BOROS */}
+        {analytics?.hourlyStats && (
+          <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <Clock className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Pola Jam Belanja (Jam Boros)
+                  </h3>
+                  <p className="text-[10px] text-slate-500">
+                    Distribusi waktu pengeluaran Tuan siklus ini
+                  </p>
+                </div>
+              </div>
+              {analytics.hourlyStats.peakSlot?.spent > 0 && (
+                <span className="self-start sm:self-auto px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                  🔥 Paling Boros: {analytics.hourlyStats.peakSlot.label} ({analytics.hourlyStats.peakSlot.hours})
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+              {(analytics.hourlyStats.slots || []).map((slot) => {
+                const isPeak = slot.key === analytics.hourlyStats.peakSlot?.key && slot.spent > 0;
+                return (
+                  <div
+                    key={slot.key}
+                    className={`p-2.5 rounded-xl border transition ${
+                      isPeak
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                        : "bg-slate-900/60 border-slate-800/80 text-slate-400"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-medium mb-1">
+                      <span className={isPeak ? "text-amber-300 font-bold" : "text-slate-300"}>
+                        {slot.label}
+                      </span>
+                      <span>{slot.percent}%</span>
+                    </div>
+                    <div className="text-[9px] text-slate-500 mb-1.5">{slot.hours}</div>
+                    <div className="text-xs font-bold font-mono-num text-slate-100">
+                      {formatRupiah(slot.spent)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* 5 TRANSAKSI TERAKHIR */}
         <section className="bento-card rounded-2xl p-5 space-y-3">

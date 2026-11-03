@@ -159,6 +159,7 @@ export async function POST(req) {
     const lower = text.toLowerCase();
     const hasNominal = hasExpenseNominal(text);
     const photos = message.photo || null;
+    const messageTime = message.date ? new Date(message.date * 1000) : new Date();
 
     if (!text && !photos) {
       return NextResponse.json({ ok: true, note: "Ignored" });
@@ -514,12 +515,19 @@ export async function POST(req) {
           ? `_Jatah hari ini sudah jebol ${formatRupiah(Math.abs(analytics.budget.todayRemaining))}. Tahan nafsu Tuan sebelum gajian tiba._`
           : `_Keadaan masih dalam kendali hamba, Tuan._`;
 
+      const peakSlot = analytics.hourlyStats?.peakSlot;
+      const peakLine = peakSlot && peakSlot.spent > 0
+        ? `• Jam Paling Boros: *${peakSlot.label}* (${formatRupiah(peakSlot.spent)})\n`
+        : "";
+
       const rekap =
         `📜 *Status Pundi-pundi (${days} Hari ke Gajian)*\n\n` +
         `• Sisa Budget Siklus: *${rem}*\n` +
         `• Jatah Aman Harian: *${safeDaily}/hari*\n` +
         `• Pengeluaran Hari Ini: *${todaySpent}*\n` +
-        `• Needs vs Wants: *${analytics.leakDetector.needsPercent}% vs ${analytics.leakDetector.wantsPercent}%*\n\n` +
+        `• Needs vs Wants: *${analytics.leakDetector.needsPercent}% vs ${analytics.leakDetector.wantsPercent}%*\n` +
+        peakLine +
+        `\n` +
         (potSummary ? `*Tabungan Terkumpul:*\n${potSummary}\n\n` : "") +
         satire;
 
@@ -686,6 +694,41 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, mode: "fast_payday_query" });
     }
 
+    // 4. Tanya Jam Boros / Waktu Pengeluaran
+    const isHourlyQuery =
+      lower.includes("jam boros") ||
+      lower.includes("boros jam") ||
+      lower.includes("jam berapa") ||
+      lower.includes("waktu boros") ||
+      lower.includes("paling boros jam") ||
+      lower.includes("pola jam");
+
+    if (isHourlyQuery) {
+      const peak = analytics.hourlyStats?.peakSlot;
+      const slots = analytics.hourlyStats?.slots || [];
+      const lines = slots
+        .map((s) => `• ${s.label} (${s.hours}): *${formatRupiah(s.spent)}* (${s.count} tx) ${peak && s.key === peak.key && s.spent > 0 ? "🔥" : ""}`)
+        .join("\n");
+
+      let verdictText = "_Pola belanja Tuan masih merata dan belum menunjukkan jam rawan khusus._";
+      if (peak && peak.spent > 0) {
+        verdictText = `_Saran Diablo: Tuan paling sering boros di waktu *${peak.label}* (${peak.percent}% pengeluaran). Waspadai pengeluaran impulsif di rentang jam tersebut._`;
+      }
+
+      const reply =
+        `⏰ *Analisis Jam Belanja & Jam Boros Tuan*\n\n` +
+        `Paling Boros di Waktu:\n` +
+        (peak && peak.spent > 0
+          ? `🔥 *${peak.label} (${peak.hours})*: *${formatRupiah(peak.spent)}* (${peak.percent}%)\n\n`
+          : `• _Belum ada pola jam belanja dominan._\n\n`) +
+        `*Rincian Waktu Belanja Siklus Ini:*\n` +
+        `${lines}\n\n` +
+        verdictText;
+
+      await sendTelegramMessage(chatId, reply, threadId);
+      return NextResponse.json({ ok: true, mode: "fast_hourly_query" });
+    }
+
     // 4. Tanya Kemampuan Bot / Bantuan / Cara Pakai
     const isBotCapabilityQuery =
       lower.includes("bisa tanya apa") ||
@@ -773,7 +816,7 @@ export async function POST(req) {
     }
 
     // ROUTE 2: Expense Logger
-    const items = await parseExpenseMessage(text);
+    const items = await parseExpenseMessage(text, messageTime);
     if (!items || items.length === 0) {
       await sendTelegramMessage(
         chatId,
@@ -792,7 +835,7 @@ export async function POST(req) {
     const lines = savedItems.map((s) => `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent})`);
     const todayRem = updatedAnalytics.budget.todayRemaining;
 
-    // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus
+    // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus & sertakan waktu
     const txDate = new Date(savedItems[0]?.createdAt || Date.now());
     const now = new Date();
     const isSameDay =
@@ -800,9 +843,15 @@ export async function POST(req) {
       txDate.getMonth() === now.getMonth() &&
       txDate.getDate() === now.getDate();
 
+    const timeStr = txDate.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta",
+    });
+
     const dateLabel = isSameDay
-      ? ""
-      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })}*)`;
+      ? ` (*Hari ini • ${timeStr} WIB*)`
+      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })} • ${timeStr} WIB*)`;
 
     const footerNote = isSameDay
       ? todayRem < 0
@@ -810,7 +859,7 @@ export async function POST(req) {
         : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`
       : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`;
 
-    const ack = `Siap Tuan, tercatat${dateLabel ? " " + dateLabel : ""}:\n${lines.join("\n")}\n\n${footerNote}`;
+    const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}\n\n${footerNote}`;
     await sendTelegramMessage(chatId, ack, threadId);
     return NextResponse.json({ ok: true, mode: "logger_saved", count: savedItems.length });
   } catch (err) {
