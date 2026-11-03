@@ -11,9 +11,9 @@ import {
   addToPot,
   createLoginToken,
 } from "../../../../lib/store.js";
-import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "../../../../lib/diablo-ai.js";
+import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor, parseNaturalDate } from "../../../../lib/diablo-ai.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
-import { formatRupiah } from "../../../../lib/format.js";
+import { formatRupiah, toWibParts, startOfWibDay } from "../../../../lib/format.js";
 import { getConfig } from "../../../../lib/bundled-config.js";
 
 const BOT_TOKEN = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
@@ -570,9 +570,8 @@ export async function POST(req) {
       (lower.includes("keluar") || lower.includes("habis") || lower.includes("berapa") || lower.includes("belanja") || lower.includes("catat") || lower.includes("rekap"));
 
     if (isPastQuery) {
-      const { parseNaturalDate } = await import("../../../../lib/diablo-ai.js");
       const { date: targetDate } = parseNaturalDate(text);
-      const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+      const startOfDay = startOfWibDay(targetDate);
       const endOfDay = new Date(startOfDay.getTime() + 86_400_000);
 
       const dayTxs = transactions.filter((t) => {
@@ -581,7 +580,13 @@ export async function POST(req) {
       });
 
       const daySpent = dayTxs.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-      const dateName = targetDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
+      const dateName = targetDate.toLocaleDateString("id-ID", {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "Asia/Jakarta",
+      });
 
       let reply = "";
       if (dayTxs.length === 0) {
@@ -610,8 +615,7 @@ export async function POST(req) {
       lower.includes("rekap hari ini");
 
     if (isTodayQuery) {
-      const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfToday = startOfWibDay(new Date());
       const todayTxs = transactions.filter((t) => new Date(t.createdAt) >= startOfToday);
       const todaySpentStr = formatRupiah(analytics.budget.todaySpent);
       const safeDailyStr = formatRupiah(analytics.budget.safeDailySpend);
@@ -837,11 +841,12 @@ export async function POST(req) {
 
     // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus & sertakan waktu
     const txDate = new Date(savedItems[0]?.createdAt || Date.now());
-    const now = new Date();
+    const txWib = toWibParts(txDate);
+    const nowWib = toWibParts(new Date());
     const isSameDay =
-      txDate.getFullYear() === now.getFullYear() &&
-      txDate.getMonth() === now.getMonth() &&
-      txDate.getDate() === now.getDate();
+      txWib.year === nowWib.year &&
+      txWib.month === nowWib.month &&
+      txWib.date === nowWib.date;
 
     const timeStr = txDate.toLocaleTimeString("id-ID", {
       hour: "2-digit",
@@ -851,7 +856,7 @@ export async function POST(req) {
 
     const dateLabel = isSameDay
       ? ` (*Hari ini • ${timeStr} WIB*)`
-      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })} • ${timeStr} WIB*)`;
+      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Jakarta" })} • ${timeStr} WIB*)`;
 
     const footerNote = isSameDay
       ? todayRem < 0

@@ -11,23 +11,23 @@ Format baris kamus: `kata kunci, kata kunci | Kategori | INTENT`
 
 ## Kamus
 
-hadiah, kado, hampers, bunga, buket, anniv, anniversary, ultah, traktir pacar, buat cewe, buat cewek, buat pacar, buat doi | Belanja & Barang | GIFT
-laptop, hp, handphone, gadget, keyboard, mouse, monitor, headset, earphone, charger, powerbank, sepatu, jaket, tas, meja, kursi, rak, alat, tools | Belanja & Barang | ASSET
-starbucks, mixue, kopi, kopi susu, boba, es teh, es kopi, latte, americano, matcha, janji jiwa, kenangan, chatime | Jajan & Kopi | WANT
-rokok, vape, liquid, sampoerna, marlboro, gudang garam, surya | Jajan & Kopi | WANT
-snack, jajan, cemilan, camilan, sosis, springles, pringles, chitato, coklat, permen, gorengan, martabak, es krim, kue, roti | Jajan & Kopi | WANT
-makan, nasi, ayam, sayur, warteg, sarapan, bakmi, mie, soto, bakso, penyetan, pecel, briyani, sushi, marugame, pizza, burger, geprek, lalapan, katsu, seafood, sate, rendang, gado-gado, lunch, dinner | Makan Pokok | NEED
-galon, beras, telur, minyak, gula, sabun, sampo, pasta gigi, tisu, deterjen | Makan Pokok | NEED
-bensin, pertamax, pertalite, gojek, grab, maxim, toll, tol, parkir, kereta, krl, mrt, transjakarta, busway, ojek, taksi, e-toll, etoll | Transport | NEED
-listrik, token, wifi, indihome, kos, kontrakan, pulsa, paket data, bpjs, air pdam, pdam, cicilan | Tagihan | NEED
-game, skin, bioskop, steam, roblox, topup, top up, netflix, spotify, youtube premium, konser, tiket nonton | Hiburan & Game | WANT
-baju, kaos, kemeja, celana, hoodie | Belanja & Barang | WANT
+hadiah, kado, hampers, bunga, buket, anniv, anniversary, ultah, traktir pacar, buat cewe, buat cewek, buat pacar, buat doi, buat ayang | Belanja & Barang | GIFT
+laptop, hp, handphone, gadget, keyboard, mouse, monitor, headset, earphone, tws, charger, powerbank, ssd, flashdisk, sepatu, jaket, tas, dompet, jam tangan, meja, kursi, rak, helm, alat, tools | Belanja & Barang | ASSET
+starbucks, mixue, kopi, kopi susu, boba, es teh, es kopi, latte, americano, matcha, janji jiwa, kenangan, kopi kenangan, fore, tomoro, point coffee, chatime, haus, tuku | Jajan & Kopi | WANT
+rokok, vape, liquid, pods, cartridge, sampoerna, marlboro, gudang garam, surya, esse, camel, dunhill | Jajan & Kopi | WANT
+snack, jajan, cemilan, camilan, sosis, springles, pringles, chitato, coklat, permen, gorengan, martabak, terang bulan, es krim, kue, roti, donat, croffle, piscok, tahu bulat, cilok, cireng, cimol, seblak, dimsum, takoyaki, indomaret, indomart, alfamart, alfamidi, lawson, familymart, circle k | Jajan & Kopi | WANT
+makan, nasi, nasi padang, padang, nasi goreng, nasgor, ayam, sayur, warteg, sarapan, bakmi, mie, mie ayam, mie gacoan, gacoan, ramen, udon, soto, rawon, sop, bakso, penyetan, pecel, pecel lele, briyani, sushi, marugame, pizza, burger, geprek, lalapan, katsu, seafood, sate, rendang, gado-gado, ketoprak, bubur, batagor, siomay, pempek, solaria, hokben, mcd, kfc, richeese, warung, katering, lunch, dinner | Makan Pokok | NEED
+galon, aqua, beras, telur, minyak, gula, garam, kecap, sambal, indomie, sabun, sampo, odol, pasta gigi, sikat gigi, deodorant, skincare, tisu, deterjen, pewangi, obat, vitamin, apotek, klinik, dokter | Makan Pokok | NEED
+bensin, pertamax, pertalite, shell, pertamina, gojek, goride, gocar, grab, grabJek, grabcar, maxim, indrive, toll, tol, parkir, kereta, krl, mrt, lrt, transjakarta, busway, damri, travel, ojek, taksi, bluebird, e-toll, etoll, flazz, brizzi, emoney, tambal ban, angin, oli, servis motor | Transport | NEED
+listrik, token, pln, wifi, indihome, biznet, kos, kosan, kontrakan, pulsa, paket data, kuota, telkomsel, byu, xl, indosat, tri, smartfren, bpjs, air pdam, pdam, cicilan, pajak, iuran, laundry, cukur, potong rambut, barbershop | Tagihan | NEED
+game, skin, diamond, valorant, mlbb, mobile legends, pubg, genshin, steam, psn, roblox, topup, top up, bioskop, xxi, cgv, netflix, spotify, youtube premium, viu, disney, konser, tiket nonton, karaoke, bilyar, billiard, bowling, warnet | Hiburan & Game | WANT
+baju, kaos, kemeja, celana, jeans, chino, hoodie, sweater, kaos kaki, topi, parfum, sandal | Belanja & Barang | WANT
 
 ## Umum
 
 Dipakai hanya kalau tidak ada yang cocok di Kamus.
 
-beli, belanja, tokped, tokopedia, shopee, lazada, checkout | Belanja & Barang | WANT
+beli, belanja, tokped, tokopedia, shopee, tiktok shop, lazada, blibli, checkout | Belanja & Barang | WANT
 
 ## Aturan
 
