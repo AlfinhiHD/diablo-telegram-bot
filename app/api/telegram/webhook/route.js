@@ -836,33 +836,46 @@ export async function POST(req) {
     }
 
     const updatedAnalytics = computeAnalytics(profile, [...savedItems, ...transactions]);
-    const lines = savedItems.map((s) => `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent})`);
+    const lines = savedItems.map((s) => {
+      const itemDate = new Date(s.createdAt);
+      const itemTimeStr = itemDate.toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Jakarta",
+      });
+      const showItemTime = savedItems.length > 1;
+      return `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent}${showItemTime ? ` • ${itemTimeStr} WIB` : ""})`;
+    });
     const todayRem = updatedAnalytics.budget.todayRemaining;
 
     // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus & sertakan waktu
+    const now = new Date();
+    const nowWib = toWibParts(now);
     const txDate = new Date(savedItems[0]?.createdAt || Date.now());
     const txWib = toWibParts(txDate);
-    const nowWib = toWibParts(new Date());
     const isSameDay =
       txWib.year === nowWib.year &&
       txWib.month === nowWib.month &&
       txWib.date === nowWib.date;
 
-    const timeStr = txDate.toLocaleTimeString("id-ID", {
+    const nowTimeStr = now.toLocaleTimeString("id-ID", {
       hour: "2-digit",
       minute: "2-digit",
       timeZone: "Asia/Jakarta",
     });
 
     const dateLabel = isSameDay
-      ? ` (*Hari ini • ${timeStr} WIB*)`
-      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Jakarta" })} • ${timeStr} WIB*)`;
+      ? ` (*Hari ini • ${nowTimeStr} WIB*)`
+      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Jakarta" })} • ${txDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })} WIB*)`;
 
+    const todaySpentStr = formatRupiah(updatedAnalytics.budget.todaySpent);
+    const safeDailyStr = formatRupiah(updatedAnalytics.budget.safeDailySpend);
     const footerNote = isSameDay
-      ? todayRem < 0
-        ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
-        : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`
-      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${formatRupiah(updatedAnalytics.budget.safeDailySpend)}/hari)`;
+      ? `• Total belanja hari ini: *${todaySpentStr}*\n` +
+        (todayRem < 0
+          ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
+          : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${safeDailyStr}/hari)`)
+      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${safeDailyStr}/hari)`;
 
     const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}\n\n${footerNote}`;
     await sendTelegramMessage(chatId, ack, threadId);
