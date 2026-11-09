@@ -18,6 +18,32 @@ import { getConfig } from "../../../../lib/bundled-config.js";
 
 const BOT_TOKEN = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
 
+let commandsSynced = false;
+async function ensureBotCommands(token) {
+  if (commandsSynced || !token) return;
+  commandsSynced = true;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        commands: [
+          { command: "start", description: "Panduan & ringkasan pundi-pundi" },
+          { command: "web", description: "🔑 Buka Web Dashboard Diablo" },
+          { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
+          { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
+          { command: "rekap", description: "📜 Status sisa budget & hari ini" },
+          { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
+          { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
+          { command: "id", description: "🆔 Cek Telegram User ID" },
+        ],
+      }),
+    });
+  } catch (err) {
+    console.warn("[Telegram] Failed to sync commands:", err.message);
+  }
+}
+
 async function sendTelegramMessage(chatId, text, threadId = null, replyMarkup = null) {
   const token = BOT_TOKEN;
   if (!token) return false;
@@ -148,6 +174,8 @@ function hasExpenseNominal(str) {
 
 export async function POST(req) {
   try {
+    ensureBotCommands(BOT_TOKEN).catch(() => {});
+
     const body = await req.json();
     const message = body.message || body.channel_post;
     if (!message) return NextResponse.json({ ok: true });
@@ -187,14 +215,27 @@ export async function POST(req) {
       return NextResponse.json({ ok: true });
     }
 
-    // Web Dashboard request (Command: /login atau bahasa wajar: "website dong", "mau buka web dashboard ku dong", "link web", dll)
+    // Web Dashboard request (Command: /web, /dashboard, /login, /app atau bahasa wajar)
     const isWebLoginRequest =
+      text === "/web" ||
+      text.startsWith("/web@") ||
+      text.startsWith("/web ") ||
+      text === "/dashboard" ||
+      text.startsWith("/dashboard@") ||
+      text.startsWith("/dashboard ") ||
       text === "/login" ||
       text.startsWith("/login@") ||
+      text.startsWith("/login ") ||
+      text === "/app" ||
+      text.startsWith("/app@") ||
+      text === "/link" ||
+      text.startsWith("/link@") ||
       lower === "web" ||
       lower === "website" ||
       lower === "dashboard" ||
       lower === "login" ||
+      lower === "/web" ||
+      lower === "/dashboard" ||
       lower.includes("website") ||
       lower.includes("buka web") ||
       lower.includes("buka dashboard") ||
@@ -272,12 +313,13 @@ export async function POST(req) {
       const welcome =
         `*Siap Tuan. Hamba Diablo, pelayan setia pundi-pundi Tuan.*\n\n` +
         `Tuan bisa bicara santai tanpa perlu menghafal perintah kaku:\n` +
-        `• *Catat Belanja:* Cukup ketik nominal santai, misal: \`makan siang 16k beli kopi 14k\` atau kirim foto struk.\n` +
+        `• *Catat Belanja:* Cukup ketik santai: \`makan siang 17.5k beli kopi 14k\` atau kirim foto struk.\n` +
+        `• *Web Dashboard:* Ketik \`/web\` atau \`/dashboard\` untuk buka dashboard visual pundi-pundi.\n` +
+        `• *Analisis Finansial:* Ketik \`/analisis\` atau \`paling boros di mana\` untuk cek kebocoran pundi.\n` +
+        `• *Status Keuangan:* Ketik \`/rekap\` atau \`sisa budget\`.\n` +
         `• *Tanya Bebas:* \`beli sepatu 1jt aman ga?\` atau \`hari ini udah keluar berapa?\`.\n` +
-        `• *Status Keuangan:* Ketik \`rekap\` atau \`sisa budget\`.\n` +
-        `• *Menabung:* Ketik \`nabung booster 200rb\` atau \`nabung darurat 500k\`.\n` +
-        `• *Batal:* Ketik \`batal\` atau \`undo\` jika keliru mencatat.\n` +
-        `• *Web Dashboard:* Ketik \`buka dashboard\` atau klik tombol di bawah.\n\n` +
+        `• *Menabung:* Ketik \`/nabung booster 200rb\` atau \`nabung darurat 500k\`.\n` +
+        `• *Batal:* Ketik \`/undo\` atau \`batal\` jika keliru mencatat.\n\n` +
         `_Tuan cukup bicara wajar pada hamba, hamba yang siap mengurusnya._`;
 
       const markup = {
@@ -520,6 +562,9 @@ export async function POST(req) {
         ? `• Jam Paling Boros: *${peakSlot.label}* (${formatRupiah(peakSlot.spent)})\n`
         : "";
 
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
+
       const rekap =
         `📜 *Status Pundi-pundi (${days} Hari ke Gajian)*\n\n` +
         `• Sisa Budget Siklus: *${rem}*\n` +
@@ -531,8 +576,97 @@ export async function POST(req) {
         (potSummary ? `*Tabungan Terkumpul:*\n${potSummary}\n\n` : "") +
         satire;
 
-      await sendTelegramMessage(chatId, rekap, threadId);
+      const markup = {
+        inline_keyboard: [
+          [{ text: "🔑 Buka Web Dashboard", url: loginUrl }],
+        ],
+      };
+
+      await sendTelegramMessage(chatId, rekap, threadId, markup);
       return NextResponse.json({ ok: true });
+    }
+
+    // Command: /analisis, /report, atau bahasa wajar ("analisis ku", "report ku", "paling boros di mana", "masih aman engga", dll)
+    const isAnalysisRequest =
+      text === "/analisis" ||
+      text.startsWith("/analisis@") ||
+      text.startsWith("/analisis ") ||
+      text === "/analysis" ||
+      text.startsWith("/analysis@") ||
+      text === "/report" ||
+      text.startsWith("/report@") ||
+      text === "/evaluasi" ||
+      text.startsWith("/evaluasi@") ||
+      lower === "analisis" ||
+      lower === "analysis" ||
+      lower === "report" ||
+      lower.includes("analisis ku") ||
+      lower.includes("analisis dong") ||
+      lower.includes("report ku") ||
+      lower.includes("liat report") ||
+      lower.includes("lihat report") ||
+      lower.includes("paling boros di mana") ||
+      lower.includes("paling boros dimana") ||
+      lower.includes("boros di mana") ||
+      lower.includes("boros dimana") ||
+      lower.includes("paling banyak keluar di mana") ||
+      lower.includes("kebanyakan jajan") ||
+      lower.includes("masih aman ga") ||
+      lower.includes("masih aman engga") ||
+      lower.includes("evaluasi keuangan") ||
+      lower.includes("analisa keuangan");
+
+    if (isAnalysisRequest) {
+      const rem = formatRupiah(analytics.budget.remainingBudget);
+      const safeDaily = formatRupiah(analytics.budget.safeDailySpend);
+      const days = analytics.cycle.daysRemaining;
+      const spent = formatRupiah(analytics.budget.spent);
+      const statusIcon = analytics.status === "AMAN" ? "🟢" : analytics.status === "HATI_HATI" ? "🟡" : "🔴";
+
+      const topCatLines = (analytics.categories || [])
+        .slice(0, 4)
+        .map((c, i) => `• ${c.category}: *${formatRupiah(c.spent)}* (${c.percent}%)`)
+        .join("\n");
+
+      const leak = analytics.leakDetector;
+      const leakLines =
+        `• Kebutuhan Pokok (NEED): *${leak.needsPercent}%* (${formatRupiah(leak.needsTotal)})\n` +
+        `• Jajan & Keinginan (WANT): *${leak.wantsPercent}%* (${formatRupiah(leak.wantsTotal)})\n` +
+        `• Hadiah & Traktir (GIFT): *${leak.giftsPercent}%* (${formatRupiah(leak.giftsTotal)})` +
+        (leak.assetsTotal > 0 ? `\n• Aset & Barang (ASSET): *${leak.assetsPercent}%* (${formatRupiah(leak.assetsTotal)})` : "");
+
+      const peak = analytics.hourlyStats?.peakSlot;
+      const peakText = peak && peak.spent > 0
+        ? `🔥 *${peak.label} (${peak.hours})*: *${formatRupiah(peak.spent)}* (${peak.percent}% dari total belanja)`
+        : `• _Belum ada jam belanja yang mendominasi._`;
+
+      const token = await createLoginToken(userId);
+      const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
+
+      const reply =
+        `📊 *Laporan Analisis Finansial Tuan*\n\n` +
+        `${statusIcon} *Status Keuangan: ${analytics.status}*\n` +
+        `_${analytics.message}_\n\n` +
+        `💰 *Kondisi Siklus (${days} Hari ke Gajian)*\n` +
+        `• Sisa Budget Bebas: *${rem}*\n` +
+        `• Total Terpakai: *${spent}*\n` +
+        `• Jatah Aman Harian: *${safeDaily}/hari*\n\n` +
+        `🛍️ *Paling Boros di Kategori:*\n` +
+        `${topCatLines || "• _Belum ada pengeluaran._"}\n\n` +
+        `🎯 *Porsi Pengeluaran (Bocor Finansial):*\n` +
+        `${leakLines}\n\n` +
+        `⏰ *Jam Paling Rawan Boros:*\n` +
+        `${peakText}\n\n` +
+        `👉 [Klik di sini untuk buka Visual Web Dashboard Tuan](${loginUrl})`;
+
+      const markup = {
+        inline_keyboard: [
+          [{ text: "🔑 Buka Web Dashboard Lengkap", url: loginUrl }],
+        ],
+      };
+
+      await sendTelegramMessage(chatId, reply, threadId, markup);
+      return NextResponse.json({ ok: true, mode: "fast_analysis_query" });
     }
 
     // Foto Struk / QRIS

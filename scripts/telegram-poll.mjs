@@ -19,13 +19,14 @@ async function setupBotProfile() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         commands: [
-          { command: "start", description: "Panduan & status pundi-pundi" },
-          { command: "login", description: "Buka Web Dashboard tanpa password" },
-          { command: "nabung", description: "Isi tabungan: /nabung <pos> <nominal>" },
-          { command: "rekap", description: "Cek sisa jatah hari ini & siklus" },
-          { command: "tanya", description: "Konsultasi izin beli barang" },
-          { command: "undo", description: "Batalkan transaksi terakhir" },
-          { command: "id", description: "Cek Telegram User ID" },
+          { command: "start", description: "Panduan & ringkasan pundi-pundi" },
+          { command: "web", description: "🔑 Buka Web Dashboard Diablo" },
+          { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
+          { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
+          { command: "rekap", description: "📜 Status sisa budget & hari ini" },
+          { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
+          { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
+          { command: "id", description: "🆔 Cek Telegram User ID" },
         ],
       }),
     });
