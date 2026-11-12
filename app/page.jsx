@@ -327,6 +327,11 @@ export default function HomePage() {
                 );
               })}
             </div>
+            {analytics.hourlyStats.untimedCount > 0 && (
+              <p className="text-[10px] text-slate-500 pt-1">
+                *{analytics.hourlyStats.untimedCount} transaksi tanpa keterangan jam ({formatRupiah(analytics.hourlyStats.untimedSpent)}) tidak dimasukkan ke statistik jam.
+              </p>
+            )}
           </section>
         )}
 
@@ -378,7 +383,7 @@ export default function HomePage() {
                       <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                         <span>{tx.category}</span>
                         <span>•</span>
-                        <span>{formatShortDate(tx.createdAt)}</span>
+                        <span>{formatShortDate(tx.createdAt, tx.timeKnown !== false)}</span>
                         {tx.paymentMethod && (
                           <>
                             <span>•</span>

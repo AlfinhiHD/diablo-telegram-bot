@@ -191,7 +191,7 @@ export default function RiwayatPage() {
                               {tx.item}
                             </div>
                             <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                              {tx.createdAt && (
+                              {tx.createdAt && tx.timeKnown !== false ? (
                                 <>
                                   <span className="text-slate-400 font-mono">
                                     {new Date(tx.createdAt).toLocaleTimeString("id-ID", {
@@ -202,7 +202,12 @@ export default function RiwayatPage() {
                                   </span>
                                   <span>•</span>
                                 </>
-                              )}
+                              ) : tx.timeKnown === false ? (
+                                <>
+                                  <span className="text-slate-500">Tanpa jam</span>
+                                  <span>•</span>
+                                </>
+                              ) : null}
                               <span>{tx.category}</span>
                               {tx.paymentMethod && (
                                 <>

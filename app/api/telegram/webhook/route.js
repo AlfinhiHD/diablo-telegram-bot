@@ -636,9 +636,12 @@ export async function POST(req) {
         (leak.assetsTotal > 0 ? `\n• Aset & Barang (ASSET): *${leak.assetsPercent}%* (${formatRupiah(leak.assetsTotal)})` : "");
 
       const peak = analytics.hourlyStats?.peakSlot;
-      const peakText = peak && peak.spent > 0
-        ? `🔥 *${peak.label} (${peak.hours})*: *${formatRupiah(peak.spent)}* (${peak.percent}% dari total belanja)`
-        : `• _Belum ada jam belanja yang mendominasi._`;
+      const untimedCount = analytics.hourlyStats?.untimedCount || 0;
+      const untimedSpent = analytics.hourlyStats?.untimedSpent || 0;
+      const peakText = (peak && peak.spent > 0
+        ? `🔥 *${peak.label} (${peak.hours})*: *${formatRupiah(peak.spent)}* (${peak.percent}% dari belanja berjam)`
+        : `• _Belum ada jam belanja yang mendominasi._`) +
+        (untimedCount > 0 ? `\n• _Catatan: ${untimedCount} transaksi tanpa jam (${formatRupiah(untimedSpent)}) tidak masuk hitungan jam._` : "");
 
       const token = await createLoginToken(userId);
       const loginUrl = `${appUrl()}/auth/verify?token=${token}`;
@@ -844,14 +847,19 @@ export async function POST(req) {
     if (isHourlyQuery) {
       const peak = analytics.hourlyStats?.peakSlot;
       const slots = analytics.hourlyStats?.slots || [];
+      const untimedCount = analytics.hourlyStats?.untimedCount || 0;
+      const untimedSpent = analytics.hourlyStats?.untimedSpent || 0;
       const lines = slots
         .map((s) => `• ${s.label} (${s.hours}): *${formatRupiah(s.spent)}* (${s.count} tx) ${peak && s.key === peak.key && s.spent > 0 ? "🔥" : ""}`)
         .join("\n");
 
       let verdictText = "_Pola belanja Tuan masih merata dan belum menunjukkan jam rawan khusus._";
       if (peak && peak.spent > 0) {
-        verdictText = `_Saran Diablo: Tuan paling sering boros di waktu *${peak.label}* (${peak.percent}% pengeluaran). Waspadai pengeluaran impulsif di rentang jam tersebut._`;
+        verdictText = `_Saran Diablo: Tuan paling sering boros di waktu *${peak.label}* (${peak.percent}% pengeluaran berjam). Waspadai pengeluaran impulsif di rentang jam tersebut._`;
       }
+      const untimedNote = untimedCount > 0
+        ? `\n\n_Catatan: ${untimedCount} transaksi tanpa jam (${formatRupiah(untimedSpent)}) tidak dimasukkan ke statistik jam._`
+        : "";
 
       const reply =
         `⏰ *Analisis Jam Belanja & Jam Boros Tuan*\n\n` +
@@ -861,7 +869,8 @@ export async function POST(req) {
           : `• _Belum ada pola jam belanja dominan._\n\n`) +
         `*Rincian Waktu Belanja Siklus Ini:*\n` +
         `${lines}\n\n` +
-        verdictText;
+        verdictText +
+        untimedNote;
 
       await sendTelegramMessage(chatId, reply, threadId);
       return NextResponse.json({ ok: true, mode: "fast_hourly_query" });
@@ -970,19 +979,19 @@ export async function POST(req) {
     }
 
     const updatedAnalytics = computeAnalytics(profile, [...savedItems, ...transactions]);
+    const formatWibClock = (d) => {
+      const p = toWibParts(d);
+      return `${String(p.hour).padStart(2, "0")}.${String(p.minute).padStart(2, "0")}`;
+    };
+
     const lines = savedItems.map((s) => {
-      const itemDate = new Date(s.createdAt);
-      const itemTimeStr = itemDate.toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Asia/Jakarta",
-      });
-      const showItemTime = savedItems.length > 1;
+      const showItemTime = savedItems.length > 1 && s.timeKnown !== false;
+      const itemTimeStr = showItemTime ? formatWibClock(s.createdAt) : "";
       return `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent}${showItemTime ? ` • ${itemTimeStr} WIB` : ""})`;
     });
     const todayRem = updatedAnalytics.budget.todayRemaining;
 
-    // Cek apakah transaksi dicatat untuk tanggal lampau / tanggal khusus & sertakan waktu
+    // Cek apakah transaksi dicatat untuk tanggal lampau / hari ini & apakah jam diketahui
     const now = new Date();
     const nowWib = toWibParts(now);
     const txDate = new Date(savedItems[0]?.createdAt || Date.now());
@@ -992,24 +1001,39 @@ export async function POST(req) {
       txWib.month === nowWib.month &&
       txWib.date === nowWib.date;
 
-    const nowTimeStr = now.toLocaleTimeString("id-ID", {
-      hour: "2-digit",
-      minute: "2-digit",
+    const timedItems = savedItems.filter((s) => s.timeKnown !== false);
+    const uniqueTimedClocks = [...new Set(timedItems.map((s) => formatWibClock(s.createdAt)))];
+    const dayStr = txDate.toLocaleDateString("id-ID", {
+      weekday: "long",
+      day: "numeric",
+      month: "short",
       timeZone: "Asia/Jakarta",
     });
 
-    const dateLabel = isSameDay
-      ? ` (*Hari ini • ${nowTimeStr} WIB*)`
-      : ` (*${txDate.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Jakarta" })} • ${txDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })} WIB*)`;
+    let dateLabel = "";
+    if (isSameDay) {
+      dateLabel = uniqueTimedClocks.length === 1
+        ? ` (*Hari ini • ${uniqueTimedClocks[0]} WIB*)`
+        : " (*Hari ini*)";
+    } else if (timedItems.length === 0) {
+      dateLabel = ` (*${dayStr} • tanpa jam spesifik*)`;
+    } else if (uniqueTimedClocks.length === 1) {
+      dateLabel = ` (*${dayStr} • ${uniqueTimedClocks[0]} WIB*)`;
+    } else {
+      dateLabel = ` (*${dayStr}*)`;
+    }
 
     const todaySpentStr = formatRupiah(updatedAnalytics.budget.todaySpent);
     const safeDailyStr = formatRupiah(updatedAnalytics.budget.safeDailySpend);
+    const untimedInfo = !isSameDay && timedItems.length === 0
+      ? `\n_Info: Jam tidak disebut, tidak masuk hitungan Jam Boros. Tambah kata waktu (misal \`angkringan 23k malem\`) jika ingin dicatat jamnya._`
+      : "";
     const footerNote = isSameDay
       ? `• Total belanja hari ini: *${todaySpentStr}*\n` +
         (todayRem < 0
           ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
           : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${safeDailyStr}/hari)`)
-      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${safeDailyStr}/hari)`;
+      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${safeDailyStr}/hari)${untimedInfo}`;
 
     const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}\n\n${footerNote}`;
     await sendTelegramMessage(chatId, ack, threadId);
