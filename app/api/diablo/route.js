@@ -116,12 +116,22 @@ export async function POST(req) {
       if (!text.trim()) return NextResponse.json({ error: "Teks kosong" }, { status: 400 });
 
       const parsedItems = await parseExpenseMessage(text);
-      const customDate = body.createdAt || new Date().toISOString();
+      if (!body.createdAt && parsedItems.some((it) => it.timeKnown === false)) {
+        return NextResponse.json(
+          {
+            error:
+              "Untuk catatan kemarin/tanggal lampau, wajib sertakan waktunya (misal: pagi, siang, sore, malem, atau jam 20.00) agar tidak ada data jam kosong.",
+          },
+          { status: 400 }
+        );
+      }
+
       const savedItems = [];
       for (const it of parsedItems) {
         const res = await addTransaction(userId, {
           ...it,
-          createdAt: customDate,
+          createdAt: body.createdAt || it.createdAt || new Date().toISOString(),
+          timeKnown: true,
           source: body.source || "web-chat",
         });
         savedItems.push(res);

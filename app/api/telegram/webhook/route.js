@@ -4,6 +4,7 @@ import {
   saveUserProfile,
   getTransactions,
   addTransaction,
+  updateTransaction,
   undoLastTransaction,
   clearUserData,
   computeAnalytics,
@@ -11,9 +12,16 @@ import {
   addToPot,
   createLoginToken,
 } from "../../../../lib/store.js";
-import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor, parseNaturalDate } from "../../../../lib/diablo-ai.js";
+import {
+  parseExpenseMessage,
+  parseReceiptImage,
+  askFinancialAdvisor,
+  parseNaturalDate,
+  hasTimeHint,
+  applyTimeReplyToPendingItems,
+} from "../../../../lib/diablo-ai.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
-import { formatRupiah, toWibParts, startOfWibDay } from "../../../../lib/format.js";
+import { formatRupiah, toWibParts, fromWib, startOfWibDay } from "../../../../lib/format.js";
 import { getConfig } from "../../../../lib/bundled-config.js";
 
 const BOT_TOKEN = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
@@ -164,12 +172,142 @@ function parseMultiPockets(text) {
 }
 
 function hasExpenseNominal(str) {
+  const cleaned = String(str || "")
+    .replace(/(?:jam|pukul)\s*\d{1,2}(?:[.:]\d{2})?/gi, " ")
+    .replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/g, " ")
+    .replace(/\b(?:[01]?\d|2[0-3])\.[0-5]\d\s*(?:wib|wita|wit)?\b/gi, " ");
   return (
-    /(?:rp\.?\s*)?\b\d+(?:[.,]\d+)?\s*(?:k|rb|ribu|jt|juta)\b/i.test(str) ||
-    /(?:rp\.?\s*)\d+/i.test(str) ||
-    /\b\d{1,3}(?:[.,]\d{3})+\b/.test(str) ||
-    /\b\d{4,9}\b/.test(str)
+    /(?:rp\.?\s*)?\b\d+(?:[.,]\d+)?\s*(?:k|rb|ribu|jt|juta)\b/i.test(cleaned) ||
+    /(?:rp\.?\s*)\d+/i.test(cleaned) ||
+    /\b\d{1,3}(?:[.,]\d{3})+\b/.test(cleaned) ||
+    /\b\d{4,9}\b/.test(cleaned)
   );
+}
+
+function formatWibClock(d) {
+  const p = toWibParts(d);
+  return `${String(p.hour).padStart(2, "0")}.${String(p.minute).padStart(2, "0")}`;
+}
+
+async function answerCallbackQuery(callbackQueryId, text = "") {
+  if (!BOT_TOKEN || !callbackQueryId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
+    });
+  } catch {}
+}
+
+async function sendPendingPastExpensePrompt(chatId, threadId, items) {
+  const txDate = new Date(items[0]?.createdAt || Date.now());
+  const dayStr = txDate.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+  });
+
+  const itemLines = items.map((s) => {
+    const tStr = s.timeKnown !== false ? ` • ${formatWibClock(s.createdAt)} WIB` : " • _belum ada jam_";
+    return `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent}${tStr})`;
+  });
+
+  const promptMsg =
+    `⏳ *Tuan, catatan tanggal lampau (${dayStr}) wajib menyertakan waktu/jam agar tidak ada data jam kosong:*\n` +
+    `${itemLines.join("\n")}\n\n` +
+    `Pilih waktu di bawah atau balas langsung jamnya (misal: \`malem\`, \`jam 20.00\`, atau \`laundry sore, sisanya malem\`):`;
+
+  const markup = {
+    inline_keyboard: [
+      [
+        { text: "🌅 Pagi (08.30)", callback_data: "past_time:08:30" },
+        { text: "☀️ Siang (12.30)", callback_data: "past_time:12:30" },
+      ],
+      [
+        { text: "🌇 Sore (16.30)", callback_data: "past_time:16:30" },
+        { text: "🌙 Malam (20.30)", callback_data: "past_time:20:30" },
+      ],
+      [{ text: "❌ Batal Catat", callback_data: "past_time:cancel" }],
+    ],
+  };
+
+  await sendTelegramMessage(chatId, promptMsg, threadId, markup);
+}
+
+async function saveAndConfirmTransactions(userId, chatId, threadId, items, profile, existingTransactions = []) {
+  const savedItems = [];
+  const updatedIds = new Set();
+
+  for (const item of items) {
+    if (item.id) {
+      const updated = await updateTransaction(userId, item.id, {
+        createdAt: item.createdAt,
+        timeKnown: true,
+      });
+      savedItems.push(updated || { ...item, timeKnown: true });
+      updatedIds.add(item.id);
+    } else {
+      savedItems.push(await addTransaction(userId, { ...item, timeKnown: true, source: item.source || "telegram" }));
+    }
+  }
+
+  if (profile?.pendingPastExpense) {
+    await saveUserProfile(userId, { pendingPastExpense: null });
+  }
+
+  const mergedTransactions = [
+    ...savedItems.filter((s) => !updatedIds.has(s.id)),
+    ...existingTransactions.map((t) => (updatedIds.has(t.id) ? savedItems.find((s) => s.id === t.id) || t : t)),
+  ];
+  const updatedAnalytics = computeAnalytics(profile, mergedTransactions);
+
+  const lines = savedItems.map((s) => {
+    const showItemTime = savedItems.length > 1;
+    const itemTimeStr = showItemTime ? formatWibClock(s.createdAt) : "";
+    return `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent}${showItemTime ? ` • ${itemTimeStr} WIB` : ""})`;
+  });
+  const todayRem = updatedAnalytics.budget.todayRemaining;
+
+  const now = new Date();
+  const nowWib = toWibParts(now);
+  const txDate = new Date(savedItems[0]?.createdAt || Date.now());
+  const txWib = toWibParts(txDate);
+  const isSameDay =
+    txWib.year === nowWib.year &&
+    txWib.month === nowWib.month &&
+    txWib.date === nowWib.date;
+
+  const uniqueClocks = [...new Set(savedItems.map((s) => formatWibClock(s.createdAt)))];
+  const dayStr = txDate.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+  });
+
+  let dateLabel = "";
+  if (isSameDay) {
+    dateLabel = uniqueClocks.length === 1 ? ` (*Hari ini • ${uniqueClocks[0]} WIB*)` : " (*Hari ini*)";
+  } else if (uniqueClocks.length === 1) {
+    dateLabel = ` (*${dayStr} • ${uniqueClocks[0]} WIB*)`;
+  } else {
+    dateLabel = ` (*${dayStr}*)`;
+  }
+
+  const todaySpentStr = formatRupiah(updatedAnalytics.budget.todaySpent);
+  const safeDailyStr = formatRupiah(updatedAnalytics.budget.safeDailySpend);
+  const footerNote = isSameDay
+    ? `• Total belanja hari ini: *${todaySpentStr}*\n` +
+      (todayRem < 0
+        ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
+        : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${safeDailyStr}/hari)`)
+    : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${safeDailyStr}/hari)`;
+
+  const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}\n\n${footerNote}`;
+  await sendTelegramMessage(chatId, ack, threadId);
+  return savedItems;
 }
 
 export async function POST(req) {
@@ -177,6 +315,74 @@ export async function POST(req) {
     ensureBotCommands(BOT_TOKEN).catch(() => {});
 
     const body = await req.json();
+
+    // Handle inline button callback_query (pilihan jam transaksi lampau)
+    if (body.callback_query) {
+      const cb = body.callback_query;
+      const cbId = cb.id;
+      const data = String(cb.data || "");
+      const cbChatId = cb.message?.chat?.id;
+      const cbThreadId = cb.message?.message_thread_id || null;
+      const cbUserId = String(cb.from?.id || cbChatId);
+
+      if (!isAllowedUser(cbUserId)) {
+        await answerCallbackQuery(cbId, "Akses ditolak");
+        return NextResponse.json({ ok: true });
+      }
+
+      if (data === "past_time:cancel") {
+        await saveUserProfile(cbUserId, { pendingPastExpense: null });
+        await answerCallbackQuery(cbId, "Catatan dibatalkan");
+        await sendTelegramMessage(cbChatId, "Siap Tuan, catatan pengeluaran tertunda telah hamba batalkan.", cbThreadId);
+        return NextResponse.json({ ok: true, mode: "pending_cancelled" });
+      }
+
+      if (data.startsWith("past_time:")) {
+        const [hStr, mStr] = data.replace("past_time:", "").split(":");
+        const hour = parseInt(hStr, 10);
+        const minute = parseInt(mStr, 10) || 0;
+        const [profile, transactions] = await Promise.all([
+          getUserProfile(cbUserId),
+          getTransactions(cbUserId, 200),
+        ]);
+
+        let pendingItems = profile?.pendingPastExpense?.items || [];
+        if (pendingItems.length === 0) {
+          const untimed = transactions.filter((t) => t.timeKnown === false);
+          if (untimed.length > 0) {
+            const latestDay = toWibParts(untimed[0].createdAt);
+            pendingItems = untimed.filter((t) => {
+              const p = toWibParts(t.createdAt);
+              return p.year === latestDay.year && p.month === latestDay.month && p.date === latestDay.date;
+            });
+          }
+        }
+
+        if (pendingItems.length === 0) {
+          await answerCallbackQuery(cbId, "Tidak ada catatan tertunda");
+          await sendTelegramMessage(cbChatId, "Maaf Tuan, tidak ada catatan tertunda atau jamnya sudah tercatat.", cbThreadId);
+          return NextResponse.json({ ok: true });
+        }
+
+        const resolved = pendingItems.map((it) => {
+          if (it.timeKnown !== false) return it;
+          const w = toWibParts(it.createdAt);
+          return {
+            ...it,
+            createdAt: fromWib(w.year, w.month, w.date, hour, minute).toISOString(),
+            timeKnown: true,
+          };
+        });
+
+        await answerCallbackQuery(cbId, "Waktu dicatat!");
+        await saveAndConfirmTransactions(cbUserId, cbChatId, cbThreadId, resolved, profile, transactions);
+        return NextResponse.json({ ok: true, mode: "pending_time_saved" });
+      }
+
+      await answerCallbackQuery(cbId);
+      return NextResponse.json({ ok: true });
+    }
+
     const message = body.message || body.channel_post;
     if (!message) return NextResponse.json({ ok: true });
 
@@ -343,6 +549,11 @@ export async function POST(req) {
       /^(?:tolong\s+)?(?:undo|batal(?:kan)?|hapus\s+transaksi\s+terakhir|salah\s+catat)\b/i.test(lower);
 
     if (isUndoRequest) {
+      if (profile?.pendingPastExpense?.items?.length) {
+        await saveUserProfile(userId, { pendingPastExpense: null });
+        await sendTelegramMessage(chatId, "Siap Tuan, catatan pengeluaran tertunda telah hamba batalkan.", threadId);
+        return NextResponse.json({ ok: true, mode: "pending_cancelled" });
+      }
       const removed = await undoLastTransaction(userId);
       const reply = removed
         ? `Siap Tuan. Catatan terakhir (*${removed.item}* - ${formatRupiah(removed.amount)}) telah hamba batalkan.`
@@ -528,6 +739,48 @@ export async function POST(req) {
     const transactions = await getTransactions(userId, 200);
     const analytics = computeAnalytics(profile, transactions);
 
+    // Tangkap balasan jam/waktu untuk catatan tanggal lampau yang tertunda (atau transaksi lampau yang belum ada jam)
+    const isTimeReplyCandidate =
+      !hasNominal &&
+      !photos &&
+      hasTimeHint(text) &&
+      !lower.includes("?") &&
+      !lower.includes("berapa") &&
+      !lower.includes("boros") &&
+      !lower.includes("keluar") &&
+      !lower.includes("habis") &&
+      !lower.includes("rekap") &&
+      !lower.includes("analisis");
+
+    if (isTimeReplyCandidate) {
+      let pendingItems = profile?.pendingPastExpense?.items || [];
+      if (pendingItems.length === 0) {
+        const untimed = transactions.filter((t) => t.timeKnown === false);
+        if (untimed.length > 0) {
+          const latestDay = toWibParts(untimed[0].createdAt);
+          pendingItems = untimed.filter((t) => {
+            const p = toWibParts(t.createdAt);
+            return p.year === latestDay.year && p.month === latestDay.month && p.date === latestDay.date;
+          });
+        }
+      }
+
+      if (pendingItems.length > 0) {
+        const updatedItems = applyTimeReplyToPendingItems(pendingItems, text);
+        const stillMissing = updatedItems.some((it) => it.timeKnown === false);
+        if (stillMissing) {
+          await saveUserProfile(userId, {
+            pendingPastExpense: { items: updatedItems, createdAt: new Date().toISOString() },
+          });
+          await sendPendingPastExpensePrompt(chatId, threadId, updatedItems);
+          return NextResponse.json({ ok: true, mode: "pending_time_partial" });
+        }
+
+        const saved = await saveAndConfirmTransactions(userId, chatId, threadId, updatedItems, profile, transactions);
+        return NextResponse.json({ ok: true, mode: "pending_time_saved", count: saved.length });
+      }
+    }
+
     // Command: /rekap atau bahasa wajar: "rekap dong", "status keuangan", "laporan", dll
     const isRekapRequest =
       text === "/rekap" ||
@@ -677,18 +930,18 @@ export async function POST(req) {
       try {
         const largestPhoto = photos[photos.length - 1];
         const base64 = await fetchTelegramPhotoBase64(largestPhoto.file_id);
-        const items = await parseReceiptImage(base64, "image/jpeg", text);
-        const saved = [];
-        for (const it of items) {
-          saved.push(await addTransaction(userId, { ...it, source: "telegram-photo" }));
+        const items = (await parseReceiptImage(base64, "image/jpeg", text)).map((it) => ({
+          ...it,
+          source: "telegram-photo",
+        }));
+        if (items.some((s) => s.timeKnown === false)) {
+          await saveUserProfile(userId, {
+            pendingPastExpense: { items, createdAt: new Date().toISOString() },
+          });
+          await sendPendingPastExpensePrompt(chatId, threadId, items);
+          return NextResponse.json({ ok: true, mode: "photo_pending_time" });
         }
-        const updatedAnalytics = computeAnalytics(profile, [...saved, ...transactions]);
-        const listText = saved.map((s) => `• *${s.item}*: ${formatRupiah(s.amount)} [${s.intent}]`).join("\n");
-        await sendTelegramMessage(
-          chatId,
-          `Siap Tuan, struk berhasil dibaca:\n${listText}\n\nSisa jatah hari ini: *${formatRupiah(updatedAnalytics.budget.todayRemaining)}*`,
-          threadId
-        );
+        await saveAndConfirmTransactions(userId, chatId, threadId, items, profile, transactions);
         return NextResponse.json({ ok: true, mode: "photo_logged" });
       } catch (err) {
         await sendTelegramMessage(chatId, `Maaf Tuan, struk gagal dibaca: ${err.message}`, threadId);
@@ -967,76 +1220,22 @@ export async function POST(req) {
     if (!items || items.length === 0) {
       await sendTelegramMessage(
         chatId,
-        `Maaf Tuan, sebutkan nominal pengeluaran agar bisa hamba catat. Contoh: \`kopi 25k qris\` atau \`makan soto 15k kemarin\``,
+        `Maaf Tuan, sebutkan nominal pengeluaran agar bisa hamba catat. Contoh: \`kopi 25k qris\` atau \`makan soto 15k kemarin siang\``,
         threadId
       );
       return NextResponse.json({ ok: true, mode: "logger_empty" });
     }
 
-    const savedItems = [];
-    for (const item of items) {
-      savedItems.push(await addTransaction(userId, { ...item, source: "telegram" }));
+    // WAJIB ADA JAM untuk tanggal lampau ("kemarin", "tgl X", dll.) agar tidak ada data jam kosong
+    if (items.some((s) => s.timeKnown === false)) {
+      await saveUserProfile(userId, {
+        pendingPastExpense: { items, createdAt: new Date().toISOString() },
+      });
+      await sendPendingPastExpensePrompt(chatId, threadId, items);
+      return NextResponse.json({ ok: true, mode: "logger_pending_time", count: items.length });
     }
 
-    const updatedAnalytics = computeAnalytics(profile, [...savedItems, ...transactions]);
-    const formatWibClock = (d) => {
-      const p = toWibParts(d);
-      return `${String(p.hour).padStart(2, "0")}.${String(p.minute).padStart(2, "0")}`;
-    };
-
-    const lines = savedItems.map((s) => {
-      const showItemTime = savedItems.length > 1 && s.timeKnown !== false;
-      const itemTimeStr = showItemTime ? formatWibClock(s.createdAt) : "";
-      return `• *${s.item}*: ${formatRupiah(s.amount)} (${s.category} / ${s.intent}${showItemTime ? ` • ${itemTimeStr} WIB` : ""})`;
-    });
-    const todayRem = updatedAnalytics.budget.todayRemaining;
-
-    // Cek apakah transaksi dicatat untuk tanggal lampau / hari ini & apakah jam diketahui
-    const now = new Date();
-    const nowWib = toWibParts(now);
-    const txDate = new Date(savedItems[0]?.createdAt || Date.now());
-    const txWib = toWibParts(txDate);
-    const isSameDay =
-      txWib.year === nowWib.year &&
-      txWib.month === nowWib.month &&
-      txWib.date === nowWib.date;
-
-    const timedItems = savedItems.filter((s) => s.timeKnown !== false);
-    const uniqueTimedClocks = [...new Set(timedItems.map((s) => formatWibClock(s.createdAt)))];
-    const dayStr = txDate.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "short",
-      timeZone: "Asia/Jakarta",
-    });
-
-    let dateLabel = "";
-    if (isSameDay) {
-      dateLabel = uniqueTimedClocks.length === 1
-        ? ` (*Hari ini • ${uniqueTimedClocks[0]} WIB*)`
-        : " (*Hari ini*)";
-    } else if (timedItems.length === 0) {
-      dateLabel = ` (*${dayStr} • tanpa jam spesifik*)`;
-    } else if (uniqueTimedClocks.length === 1) {
-      dateLabel = ` (*${dayStr} • ${uniqueTimedClocks[0]} WIB*)`;
-    } else {
-      dateLabel = ` (*${dayStr}*)`;
-    }
-
-    const todaySpentStr = formatRupiah(updatedAnalytics.budget.todaySpent);
-    const safeDailyStr = formatRupiah(updatedAnalytics.budget.safeDailySpend);
-    const untimedInfo = !isSameDay && timedItems.length === 0
-      ? `\n_Info: Jam tidak disebut, tidak masuk hitungan Jam Boros. Tambah kata waktu (misal \`angkringan 23k malem\`) jika ingin dicatat jamnya._`
-      : "";
-    const footerNote = isSameDay
-      ? `• Total belanja hari ini: *${todaySpentStr}*\n` +
-        (todayRem < 0
-          ? `⚠️ _Jatah hari ini sudah minus ${formatRupiah(Math.abs(todayRem))}. Mohon kendalikan diri Tuan._`
-          : `📉 Sisa jatah hari ini: *${formatRupiah(todayRem)}* (Jatah aman: ${safeDailyStr}/hari)`)
-      : `📉 Sisa budget siklus: *${formatRupiah(updatedAnalytics.budget.remainingBudget)}* (Jatah aman: ${safeDailyStr}/hari)${untimedInfo}`;
-
-    const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}\n\n${footerNote}`;
-    await sendTelegramMessage(chatId, ack, threadId);
+    const savedItems = await saveAndConfirmTransactions(userId, chatId, threadId, items, profile, transactions);
     return NextResponse.json({ ok: true, mode: "logger_saved", count: savedItems.length });
   } catch (err) {
     console.error("[Telegram Webhook] Error:", err);
