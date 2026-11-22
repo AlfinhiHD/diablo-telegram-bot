@@ -565,21 +565,25 @@ async function saveAndConfirmTransactions(
   }
 
   let replyMarkup = null;
+  let switchHint = "";
   const unlockedWallets = (freshProfile.wallets || []).filter((w) => !w.locked);
   if (savedItems.length === 1 && unlockedWallets.length > 1) {
     const tx = savedItems[0];
-    const otherWallets = unlockedWallets
-      .filter((w) => w.id !== tx.walletId && (tx.type !== "income" || w.role !== "credit"))
-      .slice(0, 3);
+    const otherWallets = unlockedWallets.filter(
+      (w) => w.id !== tx.walletId && (tx.type !== "income" || w.role !== "credit")
+    );
     if (otherWallets.length > 0) {
-      replyMarkup = {
-        inline_keyboard: [
-          otherWallets.map((w) => ({
-            text: `🔄 Pindah ke ${w.name}`,
+      const switchRows = [];
+      for (let i = 0; i < otherWallets.length; i += 2) {
+        switchRows.push(
+          otherWallets.slice(i, i + 2).map((w) => ({
+            text: `🔄 ${w.name}`,
             callback_data: `switch_wallet:${tx.id}:${w.id}`,
-          })),
-        ],
-      };
+          }))
+        );
+      }
+      replyMarkup = { inline_keyboard: switchRows };
+      switchHint = `\n\n_Salah dana? Klik tombol di bawah untuk pindah:_`;
     }
   }
 
@@ -590,7 +594,7 @@ async function saveAndConfirmTransactions(
     .filter(Boolean)
     .join("\n");
 
-  const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}${extraNotes ? `\n${extraNotes}` : ""}\n\n${footerNote}`;
+  const ack = `Siap Tuan, tercatat${dateLabel}:\n${lines.join("\n")}${extraNotes ? `\n${extraNotes}` : ""}\n\n${footerNote}${switchHint}`;
   await sendTelegramMessage(chatId, ack, threadId, replyMarkup);
   return savedItems;
 }
