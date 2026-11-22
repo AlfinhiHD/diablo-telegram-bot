@@ -1,19 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import DiabloAvatar from "./DiabloAvatar";
+import { logoutSession } from "@/lib/diablo-client";
 import {
   Home,
   PiggyBank,
   History,
   SlidersHorizontal,
   LogOut,
-  Send,
 } from "lucide-react";
 
 export default function Nav({ userId, profile, onQuickLog }) {
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    await logoutSession();
+  }
   const displayName = profile?.ownerName || profile?.telegramName || (userId === "1128526190" ? "Alfin" : "Tuan");
   const handle = profile?.telegramUsername || (userId === "1128526190" ? "nocelestial14" : "");
 
@@ -94,15 +102,17 @@ export default function Nav({ userId, profile, onQuickLog }) {
               </button>
             )}
 
-            <form action="/auth/logout" method="POST">
-              <button
-                type="submit"
-                title="Keluar / Ganti Akun"
-                className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title="Keluar / Ganti Akun"
+              aria-label="Keluar"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 disabled:opacity-50 transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{loggingOut ? "Keluar..." : "Keluar"}</span>
+            </button>
           </div>
         </div>
       </header>

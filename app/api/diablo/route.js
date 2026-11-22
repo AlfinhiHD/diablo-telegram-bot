@@ -5,12 +5,21 @@ import {
   getTransactions,
   addTransaction,
   toggleTransactionIntent,
+  changeTransactionWallet,
   undoLastTransaction,
   deleteTransaction,
   computeAnalytics,
   getAdvisorHistory,
   addAdvisorHistory,
   addToPot,
+  resolveWallet,
+  transferBetweenWallets,
+  applyAuditBalances,
+  markFixedCostPaid,
+  addDebt,
+  updateDebt,
+  snoozeDebt,
+  deleteDebt,
 } from "@/lib/store";
 import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "@/lib/diablo-ai";
 import { isFirebaseConfigured } from "@/lib/firebase-admin";
@@ -38,7 +47,7 @@ export async function GET(req) {
 
     const [profile, transactions, advisorHistory] = await Promise.all([
       getUserProfile(userId),
-      getTransactions(userId, 250),
+      getTransactions(userId, 300),
       getAdvisorHistory(userId, 30),
     ]);
 
@@ -81,19 +90,43 @@ export async function POST(req) {
 
     const action = body.action;
 
-    if (action === "debug_ai") {
-      const { getConfig } = require("@/lib/bundled-config");
-      return NextResponse.json({
-        ok: true,
-        apiKeyLength: (getConfig("GEMINI_API_KEY") || "").length,
-        apiKeyPrefix: (getConfig("GEMINI_API_KEY") || "").slice(0, 7),
-        envKey: (process.env.GEMINI_API_KEY || "").slice(0, 7),
-      });
-    }
-
     if (action === "update_profile") {
       const updated = await saveUserProfile(userId, body.profile);
       return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "update_wallets") {
+      const wallets = Array.isArray(body.wallets) ? body.wallets : [];
+      const updated = await saveUserProfile(userId, { wallets });
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "transfer_wallet") {
+      const res = await transferBetweenWallets(userId, body.fromWalletId, body.toWalletId, body.amount);
+      if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
+      return NextResponse.json({ ok: true, ...res });
+    }
+
+    if (action === "audit_apply") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      const updated = await applyAuditBalances(userId, items);
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "pay_bill") {
+      const res = await markFixedCostPaid(userId, body.billId, {
+        walletId: body.walletId || "",
+        amount: body.amount,
+        logTx: body.logTx !== false,
+      });
+      if (!res) return NextResponse.json({ error: "Tagihan tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...res });
+    }
+
+    if (action === "snooze_debt") {
+      const res = await snoozeDebt(userId, body.debtId, body.days || 3);
+      if (!res) return NextResponse.json({ error: "Utang/piutang tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...res });
     }
 
     if (action === "add_to_pot") {
@@ -111,11 +144,72 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, profile: updated });
     }
 
-    if (action === "log_expense") {
+    if (action === "add_debt") {
+      const result = await addDebt(userId, {
+        type: body.type || "utang",
+        person: body.person,
+        amount: body.amount,
+        note: body.note || "",
+        targetWalletId: body.targetWalletId || "",
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "update_debt") {
+      const result = await updateDebt(userId, body.debtId, body.patch || {});
+      if (!result) return NextResponse.json({ error: "Catatan utang/piutang tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "settle_debt") {
+      const profile = await getUserProfile(userId);
+      const debt = (profile.debts || []).find((d) => d.id === body.debtId);
+      if (!debt) return NextResponse.json({ error: "Catatan utang/piutang tidak ditemukan" }, { status: 404 });
+
+      const finalAmount = Number(body.amount) > 0 ? Number(body.amount) : Number(debt.amount) || 0;
+      const wallet = body.walletId ? resolveWallet(profile, body.walletId) : null;
+
+      await updateDebt(userId, debt.id, {
+        status: "paid",
+        ...(finalAmount > 0 ? { amount: finalAmount } : {}),
+      });
+
+      let tx = null;
+      if (finalAmount > 0 && wallet) {
+        const isPiutang = debt.type === "piutang";
+        tx = await addTransaction(userId, {
+          type: isPiutang ? "income" : "expense",
+          amount: finalAmount,
+          item: isPiutang ? `Pelunasan piutang ${debt.person}` : `Bayar utang ${debt.person}`,
+          category: isPiutang ? "Pemasukan" : "Tagihan",
+          intent: isPiutang ? "INCOME" : "NEED",
+          walletId: wallet.id,
+          walletName: wallet.name,
+          paymentMethod: wallet.name,
+          notes: debt.note || "",
+          source: "web-debt",
+        });
+      }
+
+      return NextResponse.json({ ok: true, transaction: tx });
+    }
+
+    if (action === "delete_debt") {
+      const updated = await deleteDebt(userId, body.debtId);
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "log_expense" || action === "log_transaction") {
       const text = body.text || "";
       if (!text.trim()) return NextResponse.json({ error: "Teks kosong" }, { status: 400 });
 
-      const parsedItems = await parseExpenseMessage(text);
+      const profile = await getUserProfile(userId);
+      const wallets = profile.wallets || [];
+      const parsedItems = await parseExpenseMessage(text, new Date(), wallets);
+
+      if (!parsedItems.length) {
+        return NextResponse.json({ error: "Nominal tidak terdeteksi. Contoh: kopi 25k atau dapet 50k ngamen" }, { status: 400 });
+      }
       if (!body.createdAt && parsedItems.some((it) => it.timeKnown === false)) {
         return NextResponse.json(
           {
@@ -126,10 +220,17 @@ export async function POST(req) {
         );
       }
 
+      const selectedWallet = body.walletId ? resolveWallet(profile, body.walletId) : null;
+      const defaultDaily = wallets.find((w) => w.role === "daily" && !w.locked) || wallets[0] || null;
+
       const savedItems = [];
       for (const it of parsedItems) {
+        const itemWallet = selectedWallet || (it.walletId ? resolveWallet(profile, it.walletId) : null) || defaultDaily;
         const res = await addTransaction(userId, {
           ...it,
+          walletId: itemWallet?.id || "",
+          walletName: itemWallet?.name || "",
+          paymentMethod: itemWallet?.name || it.paymentMethod || "QRIS",
           createdAt: body.createdAt || it.createdAt || new Date().toISOString(),
           timeKnown: true,
           source: body.source || "web-chat",
@@ -140,13 +241,23 @@ export async function POST(req) {
     }
 
     if (action === "parse_receipt") {
-      const { base64Data, mimeType, caption } = body;
+      const { base64Data, mimeType, caption, walletId } = body;
       if (!base64Data) return NextResponse.json({ error: "Gambar struk tidak ditemukan" }, { status: 400 });
 
-      const parsedItems = await parseReceiptImage(base64Data, mimeType || "image/jpeg", caption || "");
+      const profile = await getUserProfile(userId);
+      const wallets = profile.wallets || [];
+      const parsedItems = await parseReceiptImage(base64Data, mimeType || "image/jpeg", caption || "", wallets);
+      const selectedWallet = walletId ? resolveWallet(profile, walletId) : null;
+
       const savedItems = [];
       for (const it of parsedItems) {
-        const res = await addTransaction(userId, { ...it, source: "web-receipt" });
+        const w = selectedWallet || (it.walletId ? resolveWallet(profile, it.walletId) : null);
+        const res = await addTransaction(userId, {
+          ...it,
+          walletId: w?.id || "",
+          walletName: w?.name || "",
+          source: "web-receipt",
+        });
         savedItems.push(res);
       }
       return NextResponse.json({ ok: true, count: savedItems.length, items: savedItems });
@@ -157,7 +268,7 @@ export async function POST(req) {
       if (!question.trim()) return NextResponse.json({ error: "Pertanyaan kosong" }, { status: 400 });
 
       const profile = await getUserProfile(userId);
-      const transactions = await getTransactions(userId, 100);
+      const transactions = await getTransactions(userId, 150);
       const analytics = computeAnalytics(profile, transactions);
 
       const advResult = await askFinancialAdvisor(question, profile, analytics, transactions);
@@ -169,6 +280,12 @@ export async function POST(req) {
     if (action === "toggle_intent") {
       const updated = await toggleTransactionIntent(userId, body.txId);
       return NextResponse.json({ ok: true, transaction: updated });
+    }
+
+    if (action === "change_wallet") {
+      const result = await changeTransactionWallet(userId, body.txId, body.walletId);
+      if (!result) return NextResponse.json({ error: "Transaksi atau dompet tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
     }
 
     if (action === "undo_last") {

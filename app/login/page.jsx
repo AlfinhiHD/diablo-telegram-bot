@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 function LoginContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const loggedOut = searchParams.get("logged_out") === "1";
   const [tokenInput, setTokenInput] = useState("");
   const [showManual, setShowManual] = useState(false);
 
@@ -45,6 +46,26 @@ function LoginContent() {
             Asisten Keuangan Pribadi via Telegram & Web
           </p>
         </div>
+
+        {/* Logout Success Alert */}
+        {!errorMessage && loggedOut && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-start gap-3">
+            <svg
+              className="w-5 h-5 shrink-0 mt-0.5 text-emerald-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>Anda berhasil keluar dari Web Dashboard. Kirim <code className="px-1 py-0.5 rounded bg-emerald-950/60 font-mono text-xs">/dashboard</code> di Telegram kapan saja untuk masuk kembali.</span>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorMessage && (

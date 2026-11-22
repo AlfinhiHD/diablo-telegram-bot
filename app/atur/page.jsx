@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import DiabloAvatar from "@/components/DiabloAvatar";
-import { useDiabloData } from "@/lib/diablo-client";
+import { useDiabloData, logoutSession } from "@/lib/diablo-client";
 import { formatRupiah } from "@/lib/format";
 import {
   SlidersHorizontal,
@@ -30,6 +30,7 @@ function AturContent() {
   const { data, loading, reload, setData } = useDiabloData();
 
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState(null);
 
@@ -42,6 +43,8 @@ function AturContent() {
   // New fixed cost input
   const [newCostName, setNewCostName] = useState("");
   const [newCostAmount, setNewCostAmount] = useState("");
+  const [newCostDueDay, setNewCostDueDay] = useState("");
+  const [newCostCycle, setNewCostCycle] = useState("1");
 
   // Sync form state whenever data is available/updated
   useEffect(() => {
@@ -58,15 +61,22 @@ function AturContent() {
     e.preventDefault();
     if (!newCostName.trim() || !newCostAmount) return;
 
+    const cycleMonths = Math.max(1, Number(newCostCycle) || 1);
+    const dueDayNum = Number(newCostDueDay);
     const newCost = {
       id: "fc_" + Date.now(),
       name: newCostName.trim(),
       amount: Number(newCostAmount) || 0,
+      dueDay: dueDayNum >= 1 && dueDayNum <= 31 ? dueDayNum : null,
+      cycleMonths,
+      isSinkingFund: cycleMonths > 1,
     };
 
     setFixedCosts([...fixedCosts, newCost]);
     setNewCostName("");
     setNewCostAmount("");
+    setNewCostDueDay("");
+    setNewCostCycle("1");
   }
 
   function handleRemoveFixedCost(id) {
@@ -365,10 +375,19 @@ function AturContent() {
                 fixedCosts.map((cost) => (
                   <div
                     key={cost.id}
-                    className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs"
+                    className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs gap-2"
                   >
-                    <span className="font-medium text-slate-200">{cost.name}</span>
-                    <div className="flex items-center gap-3">
+                    <div className="min-w-0">
+                      <span className="font-medium text-slate-200 block truncate">{cost.name}</span>
+                      {(cost.dueDay || cost.nextDueDate || cost.cycleMonths > 1) && (
+                        <span className="text-[10px] text-slate-500">
+                          {cost.dueDay ? `Tgl ${cost.dueDay}` : ""}
+                          {cost.cycleMonths > 1 ? ` • per ${cost.cycleMonths} bln` : " • Bulanan"}
+                          {cost.nextDueDate ? ` • Berikutnya ${cost.nextDueDate}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
                       <span className="font-mono text-slate-300 font-semibold">
                         {formatRupiah(cost.amount)}
                       </span>
@@ -386,11 +405,11 @@ function AturContent() {
             </div>
 
             {/* Form Tambah Tagihan Tetap */}
-            <div className="pt-2 border-t border-slate-800/80">
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+            <div className="pt-2 border-t border-slate-800/80 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
                 <input
                   type="text"
-                  placeholder="Nama tagihan (misal: Kos, Wifi)"
+                  placeholder="Nama tagihan (misal: Kos, Spotify)"
                   value={newCostName}
                   onChange={(e) => setNewCostName(e.target.value)}
                   className="sm:col-span-3 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -399,21 +418,53 @@ function AturContent() {
                   <span className="absolute left-2.5 text-[11px] font-mono text-slate-500 pointer-events-none">Rp</span>
                   <input
                     type="number"
-                    placeholder="Nominal"
+                    placeholder="Nominal/bln"
                     value={newCostAmount}
                     onChange={(e) => setNewCostAmount(e.target.value)}
                     className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  placeholder="Tgl (1-28)"
+                  value={newCostDueDay}
+                  onChange={(e) => setNewCostDueDay(e.target.value)}
+                  className="sm:col-span-1 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
               </div>
-              <button
-                type="button"
-                onClick={handleAddFixedCost}
-                disabled={!newCostName.trim() || !newCostAmount}
-                className="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Tambah Tagihan ke Daftar
-              </button>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <span>Siklus bayar:</span>
+                  {[
+                    { v: "1", l: "Bulanan" },
+                    { v: "3", l: "Per 3 Bln" },
+                    { v: "4", l: "Per 4 Bln" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setNewCostCycle(opt.v)}
+                      className={`px-2 py-0.5 rounded border transition ${
+                        newCostCycle === opt.v
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold"
+                          : "bg-slate-900 text-slate-400 border-slate-800"
+                      }`}
+                    >
+                      {opt.l}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddFixedCost}
+                  disabled={!newCostName.trim() || !newCostAmount}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Tambah Tagihan
+                </button>
+              </div>
             </div>
           </section>
 
@@ -501,15 +552,19 @@ function AturContent() {
               </div>
             </div>
 
-            <form action="/auth/logout" method="POST">
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Keluar dari Web</span>
-              </button>
-            </form>
+            <button
+              type="button"
+              disabled={loggingOut}
+              onClick={async () => {
+                if (loggingOut) return;
+                setLoggingOut(true);
+                await logoutSession();
+              }}
+              className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{loggingOut ? "Keluar..." : "Keluar dari Web"}</span>
+            </button>
           </div>
         </section>
       </main>

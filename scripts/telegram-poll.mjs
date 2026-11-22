@@ -20,10 +20,12 @@ async function setupBotProfile() {
       body: JSON.stringify({
         commands: [
           { command: "start", description: "Panduan & ringkasan pundi-pundi" },
-          { command: "web", description: "🔑 Buka Web Dashboard Diablo" },
-          { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
-          { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
+          { command: "saldo", description: "💳 Cek saldo semua sumber dana & surplus" },
           { command: "rekap", description: "📜 Status sisa budget & hari ini" },
+          { command: "reminder", description: "🔔 Tagihan jatuh tempo & utang macet" },
+          { command: "utang", description: "🧾 Cek catatan utang & piutang" },
+          { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
+          { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
           { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
           { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
           { command: "id", description: "🆔 Cek Telegram User ID" },

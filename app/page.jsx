@@ -10,20 +10,24 @@ import { formatRupiah, formatShortDate } from "@/lib/format";
 import {
   Wallet,
   PiggyBank,
-  TrendingDown,
   Calendar,
   AlertTriangle,
   Sparkles,
   ChevronRight,
   ArrowUpRight,
-  RefreshCw,
   Plus,
-  Coins,
   Clock,
+  Lock,
+  Landmark,
+  Banknote,
+  Receipt,
+  Bell,
+  CreditCard,
+  TrendingUp,
 } from "lucide-react";
 
 export default function HomePage() {
-  const { data, loading, error, reload } = useDiabloData();
+  const { data, loading, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
 
   async function handleToggleIntent(txId) {
@@ -40,7 +44,7 @@ export default function HomePage() {
   }
 
   async function handleDeleteTx(txId) {
-    if (!confirm("Hapus transaksi ini?")) return;
+    if (!confirm("Hapus transaksi ini? Saldo dompet terkait akan disesuaikan otomatis.")) return;
     try {
       const res = await fetch("/api/diablo", {
         method: "POST",
@@ -65,27 +69,26 @@ export default function HomePage() {
   const profile = data?.profile;
   const analytics = data?.analytics;
   const transactions = data?.transactions || [];
-  const recentTx = transactions.slice(0, 5);
+  const recentTx = transactions.slice(0, 6);
+  const wallets = analytics?.walletSummary?.wallets || profile?.wallets || [];
+  const debtsSummary = analytics?.debtsSummary;
+  const reminders = analytics?.reminders;
+  const surplus = analytics?.surplusSummary;
+  const varAvgs = (analytics?.variableAverages || []).filter((v) => v.total > 0);
 
   const displayName = profile?.ownerName || profile?.telegramName || (data?.userId === "1128526190" ? "Alfin" : "Tuan");
-  const telegramHandle = profile?.telegramUsername || (data?.userId === "1128526190" ? "nocelestial14" : "");
-
-  const isConfigured = profile && profile.monthlyIncome > 0;
+  const isConfigured = profile && (profile.monthlyIncome > 0 || wallets.length > 0);
   const todayRemaining = analytics?.budget?.todayRemaining ?? 0;
+  const creditDebtTotal = analytics?.budget?.creditDebtTotal ?? 0;
   const isOverbudget = todayRemaining < 0;
 
-  // Total tabungan terkumpul di semua pos
-  const totalSavedInPots = (profile?.savingsPots || []).reduce(
-    (acc, p) => acc + (Number(p.saved) || 0),
-    0
-  );
+  const upcomingActiveBills = (reminders?.upcomingBills || []).filter((b) => b.amount > 0).slice(0, 3);
 
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
       <Nav userId={data?.userId} profile={data?.profile} onQuickLog={() => setQuickLogOpen(true)} />
 
       <main className="max-w-4xl mx-auto px-4 pt-6 space-y-6">
-        {/* Onboarding Alert jika belum setup gaji */}
         {!isConfigured && (
           <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -110,15 +113,14 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* HERO CARD: 1 Pertanyaan Utama "Berapa boleh kupakai hari ini?" */}
+        {/* HERO CARD: "Boleh Dipakai Hari Ini" */}
         <section className="bento-card rounded-3xl p-6 sm:p-8 relative overflow-hidden">
-          {/* Subtle Decorative Background Butler Crest */}
           <div className="absolute -right-6 -bottom-6 w-40 h-40 opacity-[0.07] pointer-events-none select-none">
             <DiabloAvatar className="w-full h-full" />
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 relative z-10">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 relative z-10">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Boleh Dipakai Hari Ini
               </span>
@@ -131,12 +133,15 @@ export default function HomePage() {
               >
                 {isOverbudget ? "Overbudget" : "Aman"}
               </span>
+              {creditDebtTotal > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Sudah potong PayLater {formatRupiah(creditDebtTotal)}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="text-slate-300 font-medium">
-                {displayName}
-              </span>
+              <span className="text-slate-300 font-medium">{displayName}</span>
               <span className="text-slate-600">•</span>
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
               <span>
@@ -145,7 +150,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Primary Big Metric */}
           <div className="flex items-baseline gap-2 relative z-10">
             <h1
               className={`text-4xl sm:text-5xl font-extrabold tracking-tight font-heading ${
@@ -156,9 +160,8 @@ export default function HomePage() {
             </h1>
           </div>
 
-          {/* Breakdown description */}
           <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 relative z-10">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <span>
                 Jatah normal:{" "}
                 <strong className="text-slate-200">
@@ -172,6 +175,17 @@ export default function HomePage() {
                   {formatRupiah(analytics?.budget?.todaySpent ?? 0)}
                 </strong>
               </span>
+              {(analytics?.budget?.todayIncome ?? 0) > 0 && (
+                <>
+                  <span>•</span>
+                  <span>
+                    Masuk hari ini:{" "}
+                    <strong className="text-emerald-400">
+                      +{formatRupiah(analytics.budget.todayIncome)}
+                    </strong>
+                  </span>
+                </>
+              )}
             </div>
 
             <button
@@ -179,65 +193,250 @@ export default function HomePage() {
               className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold text-xs"
             >
               <Plus className="w-3.5 h-3.5" />
-              Catat Pengeluaran
+              Catat Transaksi
             </button>
           </div>
         </section>
 
-        {/* 2 BENTO SUB-CARDS: Sisa Budget Siklus & Pos Tabungan */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Card A: Sisa Budget Siklus */}
+        {/* DOMPET & SUMBER DANA */}
+        {wallets.length > 0 && (
+          <section className="bento-card rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Sumber Dana & PayLater
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Klik dana untuk lihat riwayat terpisah • Audit & pindah dana di menu Tabungan
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[10px] text-slate-500 block">Likuid Bersih</span>
+                <span className="text-xs font-bold font-mono text-emerald-400">
+                  {formatRupiah(analytics?.walletSummary?.liquidTotal ?? 0)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {wallets.map((w) => {
+                const isLocked = w.locked || w.role === "emergency";
+                const isCredit = w.role === "credit";
+                const isDaily = w.role === "daily";
+                const hasCreditDebt = isCredit && w.balance < 0;
+
+                return (
+                  <Link
+                    key={w.id}
+                    href={`/riwayat?wallet=${encodeURIComponent(w.id)}`}
+                    className={`p-3 rounded-xl border transition group flex flex-col justify-between gap-2 ${
+                      hasCreditDebt
+                        ? "bg-rose-500/[0.08] border-rose-500/30 hover:border-rose-400/50"
+                        : isCredit
+                        ? "bg-slate-900/50 border-slate-800 hover:border-emerald-500/30"
+                        : isLocked
+                        ? "bg-slate-900/40 border-slate-800/80 hover:border-amber-500/30"
+                        : isDaily
+                        ? "bg-emerald-500/[0.06] border-emerald-500/20 hover:border-emerald-500/40"
+                        : "bg-slate-900/70 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[11px] font-semibold text-slate-200 truncate">
+                        {w.name}
+                      </span>
+                      {isLocked ? (
+                        <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                      ) : isCredit ? (
+                        <CreditCard className={`w-3.5 h-3.5 shrink-0 ${hasCreditDebt ? "text-rose-400" : "text-emerald-400"}`} />
+                      ) : w.id === "cash" ? (
+                        <Banknote className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Landmark className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      )}
+                    </div>
+                    <div>
+                      <div
+                        className={`text-sm font-bold font-mono-num ${
+                          hasCreditDebt
+                            ? "text-rose-400"
+                            : isCredit
+                            ? "text-emerald-400"
+                            : isLocked
+                            ? "text-amber-300"
+                            : "text-slate-100"
+                        }`}
+                      >
+                        {isCredit && w.balance === 0 ? "Lunas (Rp 0)" : formatRupiah(w.balance)}
+                      </div>
+                      <div className="text-[9px] text-slate-500 mt-0.5 flex items-center justify-between">
+                        <span>
+                          {isLocked
+                            ? "Dana Darurat"
+                            : isCredit
+                            ? hasCreditDebt
+                              ? "Tagihan Berjalan"
+                              : "PayLater"
+                            : isDaily
+                            ? "Dana Harian"
+                            : "Simpanan"}
+                        </span>
+                        {w.txCount > 0 && <span className="text-slate-400">{w.txCount} tx</span>}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* 3 BENTO SUB-CARDS: Surplus & Dana Harian | Reminder Tagihan | Tabungan & Utang */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: Sisa Dana Harian & Surplus */}
           <div className="bento-subcard rounded-2xl p-5 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400 font-medium">Sisa Budget Siklus</span>
-              <Wallet className="w-4 h-4 text-emerald-400" />
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400 font-medium">Dana Harian & Surplus</span>
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
               <div className="text-2xl font-bold font-heading text-slate-100">
                 {formatRupiah(analytics?.budget?.remainingBudget ?? 0)}
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Dari alokasi bebas pakai {formatRupiah(analytics?.budget?.cycleBudget ?? 0)}
+                Setelah net utang/piutang:{" "}
+                <strong className="text-slate-300">
+                  {formatRupiah(surplus?.dailyNetAfterDebts ?? 0)}
+                </strong>
               </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
-              <span>Terpakai siklus ini</span>
-              <span className="font-semibold text-slate-300">
-                {formatRupiah(analytics?.budget?.cycleSpent ?? 0)}
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+              <span className="text-slate-400">Proyeksi surplus tgl {profile?.paydayDate || 25}</span>
+              <span
+                className={`font-semibold font-mono ${
+                  (surplus?.projectedEndCycleSurplus ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {(surplus?.projectedEndCycleSurplus ?? 0) >= 0 ? "+" : ""}
+                {formatRupiah(surplus?.projectedEndCycleSurplus ?? 0)}
               </span>
             </div>
           </div>
 
-          {/* Card B: Pos Tabungan Terkumpul */}
+          {/* Card 2: Reminder & Tagihan Tetap Terdekat */}
           <Link
-            href="/tabungan"
+            href="/tabungan#tagihan"
             className="bento-subcard rounded-2xl p-5 flex flex-col justify-between group hover:border-slate-700 transition"
           >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-slate-400 font-medium">Pos Tabungan Terkumpul</span>
-              <div className="flex items-center gap-1 text-emerald-400 group-hover:translate-x-0.5 transition">
-                <PiggyBank className="w-4 h-4" />
-                <ChevronRight className="w-3.5 h-3.5" />
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400 font-medium">Reminder Tagihan</span>
+              <Bell className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="space-y-1.5">
+              {upcomingActiveBills.length === 0 ? (
+                <p className="text-xs text-slate-500">Belum ada jadwal tagihan tetap.</p>
+              ) : (
+                upcomingActiveBills.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between text-[11px] gap-2">
+                    <span className="text-slate-200 truncate">{b.name.split("(")[0].trim()}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono text-slate-300">{formatRupiah(b.dueAmount)}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                            ? "bg-rose-500/20 text-rose-300"
+                            : b.urgency === "SOON"
+                            ? "bg-amber-500/20 text-amber-300"
+                            : "bg-slate-800 text-slate-400"
+                        }`}
+                      >
+                        {b.dueLabel}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Wajib/bln: {formatRupiah(reminders?.monthlyFixedNeeded ?? 0)}</span>
+              <span className="font-semibold text-amber-400 flex items-center gap-0.5">
+                Kelola <ChevronRight className="w-3 h-3" />
+              </span>
+            </div>
+          </Link>
+
+          {/* Card 3: Kekayaan Bersih & Utang/Piutang */}
+          <Link
+            href="/tabungan#utang"
+            className="bento-subcard rounded-2xl p-5 flex flex-col justify-between group hover:border-slate-700 transition"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-400 font-medium">Utang, Piutang & Aset</span>
+              <PiggyBank className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
               <div className="text-2xl font-bold font-heading text-emerald-400">
-                {formatRupiah(totalSavedInPots)}
+                {formatRupiah(analytics?.walletSummary?.netWorthTotal ?? 0)}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Tersebar di {profile?.savingsPots?.length || 0} pos tabungan aktif
-              </p>
+              <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap gap-x-2">
+                <span>
+                  Utang: <strong className="text-rose-400">{formatRupiah(debtsSummary?.openUtangTotal ?? 0)}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Piutang: <strong className="text-emerald-400">{formatRupiah(debtsSummary?.openPiutangTotal ?? 0)}</strong>
+                </span>
+              </div>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
-              <span>Kelola pos tabungan</span>
+              <span>Audit, Transfer & Utang</span>
               <span className="font-semibold text-emerald-400 flex items-center gap-0.5">
-                Buka Tabungan <ArrowUpRight className="w-3 h-3" />
+                Buka <ArrowUpRight className="w-3 h-3" />
               </span>
             </div>
           </Link>
         </section>
 
-        {/* DIABLO SATIRE / BUTLER ADVISORY */}
+        {/* UTANG & PIUTANG RINGKAS + RATA-RATA VARIABEL */}
+        {debtsSummary && debtsSummary.items?.length > 0 && (
+          <section className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                <Receipt className="w-4 h-4" />
+              </div>
+              <div className="text-xs">
+                <strong className="text-slate-200 block">
+                  Utang & Piutang Belum Lunas ({debtsSummary.items.length}) — Net{" "}
+                  <span className={debtsSummary.netDebtPosition >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                    {debtsSummary.netDebtPosition >= 0 ? "+" : ""}
+                    {formatRupiah(debtsSummary.netDebtPosition)}
+                  </span>
+                </strong>
+                <div className="text-[11px] text-slate-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {debtsSummary.items.map((d) => (
+                    <span key={d.id}>
+                      <span className={d.type === "piutang" ? "text-emerald-400" : "text-rose-400"}>
+                        {d.type === "piutang" ? "+" : "-"}
+                      </span>{" "}
+                      {d.person}:{" "}
+                      <strong className="text-slate-300">
+                        {d.amount === null ? "?" : formatRupiah(d.amount)}
+                      </strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/tabungan#utang"
+              className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold shrink-0 flex items-center gap-0.5"
+            >
+              Lunasi / Snooze <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </section>
+        )}
+
+        {/* DIABLO ADVISORY */}
         <section className="p-4 rounded-2xl bg-slate-900/40 border border-slate-800/80 flex items-start gap-3">
           <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
             <Sparkles className="w-4 h-4" />
@@ -246,38 +445,39 @@ export default function HomePage() {
             <strong className="text-purple-300 font-semibold block mb-0.5">
               Komentar Diablo:
             </strong>
-            {analytics?.projection?.isDanger ? (
-              <span>
-                &ldquo;Kukuku... Maaf Tuan, jika pola belanja berlanjut seperti ini, kas Tuan
-                diproyeksikan habis dalam{" "}
-                <span className="text-rose-400 font-bold">
-                  {analytics.projection.daysUntilBroke} hari
-                </span>
-                . Mohon kencangkan ikat pinggang Tuan.&rdquo;
-              </span>
-            ) : isOverbudget ? (
-              <span>
-                &ldquo;Jatah hari ini sudah terlampaui sebesar{" "}
-                <span className="text-rose-400 font-bold">
-                  {formatRupiah(Math.abs(todayRemaining))}
-                </span>
-                . Jangan biarkan godaan nafsu sesaat meruntuhkan martabat dompet Tuan.&rdquo;
-              </span>
-            ) : (
-              <span>
-                &ldquo;Pundi-pundi Tuan masih aman dan terkendali. Kebutuhan pokok Tuan
-                berada di porsi {analytics?.leakDetector?.needsPercent ?? 0}%, dan keinginan di{" "}
-                {analytics?.leakDetector?.wantsPercent ?? 0}%
-                {analytics?.leakDetector?.giftsPercent > 0
-                  ? `, hadiah di ${analytics.leakDetector.giftsPercent}%`
-                  : ""}
-                . Pertahankan disiplin ini.&rdquo;
-              </span>
-            )}
+            <span>&ldquo;{analytics?.message || "Pundi-pundi Tuan dalam kendali hamba."}&rdquo;</span>
           </div>
         </section>
 
-        {/* POLA JAM BELANJA / JAM BOROS */}
+        {/* RATA-RATA PENGELUARAN VARIABEL (Kuota, Pulsa, Bensin, Laundry, Listrik) */}
+        {varAvgs.length > 0 && (
+          <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Rata-Rata Rutin Variabel (Keseharian)
+                </h3>
+                <p className="text-[10px] text-slate-500">
+                  Estimasi bulanan untuk kuota, pulsa, bensin, listrik & laundry ({varAvgs[0]?.monthsObserved || 1} bln data)
+                </p>
+              </div>
+              <Wallet className="w-4 h-4 text-slate-500" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {varAvgs.map((v) => (
+                <div key={v.key} className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="text-[10px] text-slate-400">{v.label}</div>
+                  <div className="text-sm font-bold font-mono text-slate-100 mt-1">
+                    {formatRupiah(v.avgMonthly)}<span className="text-[10px] text-slate-500 font-normal">/bln</span>
+                  </div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">{v.count}x tercatat</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* POLA JAM BELANJA */}
         {analytics?.hourlyStats && (
           <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -290,7 +490,7 @@ export default function HomePage() {
                     Pola Jam Belanja (Jam Boros)
                   </h3>
                   <p className="text-[10px] text-slate-500">
-                    Distribusi waktu pengeluaran Tuan siklus ini
+                    Distribusi waktu pengeluaran harian Tuan siklus ini
                   </p>
                 </div>
               </div>
@@ -327,19 +527,14 @@ export default function HomePage() {
                 );
               })}
             </div>
-            {analytics.hourlyStats.untimedCount > 0 && (
-              <p className="text-[10px] text-slate-500 pt-1">
-                *{analytics.hourlyStats.untimedCount} transaksi tanpa keterangan jam ({formatRupiah(analytics.hourlyStats.untimedSpent)}) tidak dimasukkan ke statistik jam.
-              </p>
-            )}
           </section>
         )}
 
-        {/* 5 TRANSAKSI TERAKHIR */}
+        {/* TRANSAKSI TERAKHIR */}
         <section className="bento-card rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              5 Transaksi Terakhir
+              Transaksi Terakhir
             </h3>
             <Link
               href="/riwayat"
@@ -355,61 +550,61 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-800/60">
-              {recentTx.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="py-3 flex items-center justify-between gap-3 text-xs group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <button
-                      onClick={() => handleToggleIntent(tx.id)}
-                      title="Klik untuk ubah status (NEED / WANT / GIFT / ASSET)"
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border ${
-                        tx.intent === "NEED"
-                          ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border-blue-500/20"
-                          : tx.intent === "GIFT"
-                          ? "bg-fuchsia-500/15 text-fuchsia-400 hover:bg-fuchsia-500/25 border-fuchsia-500/20"
-                          : tx.intent === "ASSET"
-                          ? "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border-sky-500/20"
-                          : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border-amber-500/20"
-                      }`}
-                    >
-                      {tx.intent}
-                    </button>
-                    <div className="min-w-0">
-                      <div className="font-medium text-slate-200 truncate">
-                        {tx.item}
-                      </div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        <span>{tx.category}</span>
-                        <span>•</span>
-                        <span>{formatShortDate(tx.createdAt, tx.timeKnown !== false)}</span>
-                        {tx.paymentMethod && (
-                          <>
-                            <span>•</span>
-                            <span className="uppercase text-[9px] text-slate-400">
-                              {tx.paymentMethod}
-                            </span>
-                          </>
-                        )}
+              {recentTx.map((tx) => {
+                const isIncome = tx.type === "income";
+                return (
+                  <div key={tx.id} className="py-3 flex items-center justify-between gap-3 text-xs group">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        onClick={() => !isIncome && handleToggleIntent(tx.id)}
+                        title={isIncome ? "Pemasukan" : "Klik untuk ubah status (NEED / WANT / GIFT / ASSET)"}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border ${
+                          isIncome
+                            ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 cursor-default"
+                            : tx.intent === "NEED"
+                            ? "bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border-blue-500/20"
+                            : tx.intent === "GIFT"
+                            ? "bg-fuchsia-500/15 text-fuchsia-400 hover:bg-fuchsia-500/25 border-fuchsia-500/20"
+                            : tx.intent === "ASSET"
+                            ? "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 border-sky-500/20"
+                            : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border-amber-500/20"
+                        }`}
+                      >
+                        {isIncome ? "MASUK" : tx.intent}
+                      </button>
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-200 truncate">{tx.item}</div>
+                        <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span>{tx.category}</span>
+                          <span>•</span>
+                          <span>{formatShortDate(tx.createdAt, tx.timeKnown !== false)}</span>
+                          {(tx.walletName || tx.paymentMethod) && (
+                            <>
+                              <span>•</span>
+                              <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] text-slate-300 font-medium">
+                                {tx.walletName || tx.paymentMethod}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-semibold text-slate-100 font-mono-num">
-                      {formatRupiah(tx.amount)}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteTx(tx.id)}
-                      title="Hapus transaksi"
-                      className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition"
-                    >
-                      ×
-                    </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`font-semibold font-mono-num ${isIncome ? "text-emerald-400" : "text-slate-100"}`}>
+                        {isIncome ? `+${formatRupiah(tx.amount)}` : formatRupiah(tx.amount)}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteTx(tx.id)}
+                        title="Hapus transaksi"
+                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -418,7 +613,8 @@ export default function HomePage() {
       <QuickLogModal
         isOpen={quickLogOpen}
         onClose={() => setQuickLogOpen(false)}
-        onSuccess={() => loadData()}
+        onSuccess={() => reload()}
+        wallets={profile?.wallets || []}
       />
     </div>
   );

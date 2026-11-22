@@ -55,17 +55,17 @@ test.describe("Diablo Finance E2E Testing", () => {
     await expect(page.locator("text=Boleh Dipakai Hari Ini")).toBeVisible();
 
     // Tabungan
-    await page.locator("a[href='/tabungan']").locator("visible=true").click();
+    await page.locator("nav a[href='/tabungan']").locator("visible=true").first().click();
     await expect(page).toHaveURL("/tabungan");
     await expect(page.locator("h1")).toContainText("Pos Tabungan Fleksibel");
 
     // Riwayat
-    await page.locator("a[href='/riwayat']").locator("visible=true").click();
+    await page.locator("nav a[href='/riwayat']").locator("visible=true").first().click();
     await expect(page).toHaveURL("/riwayat");
     await expect(page.locator("h1")).toContainText("Riwayat Transaksi");
 
     // Atur
-    await page.locator("a[href='/atur']").locator("visible=true").click();
+    await page.locator("nav a[href='/atur']").locator("visible=true").first().click();
     await expect(page).toHaveURL("/atur");
     await expect(page.locator("h1")).toContainText("Pengaturan Pundi-pundi");
   });
@@ -93,5 +93,32 @@ test.describe("Diablo Finance E2E Testing", () => {
     // Close modal
     await page.click("button:has-text('Batal')");
     await expect(page.locator("text=Catat Pengeluaran Cepat")).not.toBeVisible();
+  });
+
+  test("5. Logout Flow: clears session cookie, cache, and redirects to /login", async ({ page, context }) => {
+    const sessionValue = signSession("1128526190");
+    await context.addCookies([
+      {
+        name: SESSION_COOKIE,
+        value: sessionValue,
+        domain: "localhost",
+        path: "/",
+        httpOnly: true,
+      },
+    ]);
+
+    await page.goto("/");
+    await expect(page.locator("text=Boleh Dipakai Hari Ini")).toBeVisible();
+
+    await page.getByRole("button", { name: "Keluar" }).click();
+    await expect(page).toHaveURL(/\/login\?logged_out=1/);
+    await expect(page.locator("text=Anda berhasil keluar dari Web Dashboard")).toBeVisible();
+
+    const cookies = await context.cookies();
+    const sessionCookie = cookies.find((c) => c.name === SESSION_COOKIE && c.value);
+    expect(sessionCookie).toBeFalsy();
+
+    const cached = await page.evaluate(() => sessionStorage.getItem("diablo_cache_v1"));
+    expect(cached).toBeNull();
   });
 });

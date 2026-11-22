@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Send } from "lucide-react";
+import { X, Sparkles, Send, Wallet } from "lucide-react";
 
-export default function QuickLogModal({ isOpen, onClose, onSuccess }) {
+export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = [] }) {
   const [text, setText] = useState("");
+  const [walletId, setWalletId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   if (!isOpen) return null;
+
+  const activeWallets = (wallets || []).filter((w) => !w.locked);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -23,16 +26,18 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess }) {
         body: JSON.stringify({
           action: "log_expense",
           text: text.trim(),
+          ...(walletId ? { walletId } : {}),
           source: "web-quick-modal",
         }),
       });
 
       const data = await res.json();
       if (!res.ok || data.error) {
-        throw new Error(data.error || "Gagal mencatat pengeluaran");
+        throw new Error(data.error || "Gagal mencatat transaksi");
       }
 
       setText("");
+      setWalletId("");
       if (onSuccess) onSuccess(data.items);
       onClose();
     } catch (err) {
@@ -72,20 +77,56 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs text-slate-400 mb-1.5">
-              Ketik seperti kirim pesan ke Diablo:
+              Ketik pengeluaran atau pemasukan seperti chat ke Diablo:
             </label>
             <textarea
               autoFocus
               rows={3}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Contoh: kopi kenangan 24k qris&#10;Atau: makan padang 30rb & bensin 50rb"
+              placeholder={"Contoh keluar: kopi 15k & makan siang 20k\nContoh masuk: dapet duit 50k dari ngamen"}
               className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 transition resize-none font-sans"
             />
             <p className="text-[11px] text-slate-500 mt-1">
-              AI Diablo otomatis mengenali nominal, kategori (Makan/Transport), dan intent (Need/Want).
+              AI Diablo otomatis bedakan pengeluaran vs pemasukan, kategori, dan intent.
             </p>
           </div>
+
+          {activeWallets.length > 0 && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5">
+                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Sumber / Tujuan Dana</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setWalletId("")}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
+                    walletId === ""
+                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  Auto / Default
+                </button>
+                {activeWallets.map((w) => (
+                  <button
+                    key={w.id}
+                    type="button"
+                    onClick={() => setWalletId(w.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
+                      walletId === w.id
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
+                    }`}
+                  >
+                    {w.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <button
