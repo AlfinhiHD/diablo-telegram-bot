@@ -165,6 +165,9 @@ export async function POST(req) {
       const profile = await getUserProfile(userId);
       const debt = (profile.debts || []).find((d) => d.id === body.debtId);
       if (!debt) return NextResponse.json({ error: "Catatan utang/piutang tidak ditemukan" }, { status: 404 });
+      if (debt.status === "paid") {
+        return NextResponse.json({ error: "Catatan ini sudah dilunasi" }, { status: 400 });
+      }
 
       const finalAmount = Number(body.amount) > 0 ? Number(body.amount) : Number(debt.amount) || 0;
       const wallet = body.walletId ? resolveWallet(profile, body.walletId) : null;
@@ -172,6 +175,7 @@ export async function POST(req) {
       await updateDebt(userId, debt.id, {
         status: "paid",
         ...(finalAmount > 0 ? { amount: finalAmount } : {}),
+        ...(wallet ? { targetWalletId: wallet.id } : {}),
       });
 
       let tx = null;

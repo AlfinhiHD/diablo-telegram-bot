@@ -5,7 +5,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
 import { useDiabloData } from "@/lib/diablo-client";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, formatShortDate } from "@/lib/format";
 import {
   PiggyBank,
   Plus,
@@ -65,6 +65,7 @@ export default function TabunganPage() {
   const [settleTarget, setSettleTarget] = useState(null);
   const [settleWalletId, setSettleWalletId] = useState("bni");
   const [settleAmount, setSettleAmount] = useState("");
+  const [debtTab, setDebtTab] = useState("open"); // "open" | "paid"
 
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -72,9 +73,15 @@ export default function TabunganPage() {
   const pots = data?.profile?.savingsPots || [];
   const reminders = data?.analytics?.reminders;
   const upcomingBills = reminders?.upcomingBills || [];
-  const debts = reminders?.openDebts || (data?.profile?.debts || []).filter((d) => d.status !== "paid");
-  const utangList = debts.filter((d) => d.type === "utang");
-  const piutangList = debts.filter((d) => d.type === "piutang");
+  const allDebts = data?.profile?.debts || [];
+  const openDebts = (reminders?.openDebts || allDebts).filter((d) => d.status !== "paid");
+  const paidDebts = allDebts
+    .filter((d) => d.status === "paid")
+    .sort((a, b) => new Date(b.paidAt || b.createdAt || 0) - new Date(a.paidAt || a.createdAt || 0));
+  const utangList = openDebts.filter((d) => d.type === "utang");
+  const piutangList = openDebts.filter((d) => d.type === "piutang");
+  const paidUtangList = paidDebts.filter((d) => d.type === "utang");
+  const paidPiutangList = paidDebts.filter((d) => d.type === "piutang");
 
   const totalSaved = pots.reduce((acc, p) => acc + (Number(p.saved) || 0), 0);
   const totalTarget = pots.reduce((acc, p) => acc + (Number(p.target) || 0), 0);
@@ -493,7 +500,7 @@ export default function TabunganPage() {
 
         {/* UTANG & PIUTANG */}
         <section id="utang" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <Receipt className="w-4 h-4 text-amber-400" />
               <span>Catatan Utang & Piutang</span>
@@ -507,107 +514,195 @@ export default function TabunganPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Utang */}
-            <div className="p-4 rounded-xl bg-rose-500/[0.04] border border-rose-500/20 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-rose-300">Utang Tuan ({utangList.length})</span>
-                <span className="font-mono text-rose-400 font-bold">
-                  {formatRupiah(utangList.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                </span>
-              </div>
-              {utangList.length === 0 ? (
-                <p className="text-[11px] text-slate-500">Tidak ada utang terbuka.</p>
-              ) : (
-                <div className="space-y-2">
-                  {utangList.map((d) => (
-                    <div key={d.id} className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                      <div className="min-w-0">
-                        <div className="font-medium text-slate-200 truncate">{d.person}</div>
-                        <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-1">
-                          <span>{d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}</span>
-                          {d.ageDays > 0 && <span>• {d.ageDays}h</span>}
-                          {d.isSnoozed && <span className="text-amber-400">• snooze</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleSnoozeDebt(d.id)}
-                          title="Tunda reminder 3 hari"
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300"
-                        >
-                          <Clock className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSettleTarget(d);
-                            setSettleAmount(d.amount ? String(d.amount) : "");
-                            setSettleWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                          }}
-                          className="px-2 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-[10px] font-semibold"
-                        >
-                          Lunas
-                        </button>
-                        <button onClick={() => handleDeleteDebt(d.id)} className="p-1 text-slate-500 hover:text-rose-400">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Piutang */}
-            <div className="p-4 rounded-xl bg-emerald-500/[0.04] border border-emerald-500/20 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-emerald-300">Piutang / Uang di Orang ({piutangList.length})</span>
-                <span className="font-mono text-emerald-400 font-bold">
-                  {formatRupiah(piutangList.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                </span>
-              </div>
-              {piutangList.length === 0 ? (
-                <p className="text-[11px] text-slate-500">Tidak ada piutang terbuka.</p>
-              ) : (
-                <div className="space-y-2">
-                  {piutangList.map((d) => (
-                    <div key={d.id} className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                      <div className="min-w-0">
-                        <div className="font-medium text-slate-200 truncate">{d.person}</div>
-                        <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-1">
-                          <span>{d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}</span>
-                          {d.ageDays > 0 && <span>• {d.ageDays}h</span>}
-                          {d.isSnoozed && <span className="text-amber-400">• snooze</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleSnoozeDebt(d.id)}
-                          title="Tunda reminder 3 hari"
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300"
-                        >
-                          <Clock className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSettleTarget(d);
-                            setSettleAmount(d.amount ? String(d.amount) : "");
-                            setSettleWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                          }}
-                          className="px-2 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-[10px] font-semibold"
-                        >
-                          Dibayar
-                        </button>
-                        <button onClick={() => handleDeleteDebt(d.id)} className="p-1 text-slate-500 hover:text-rose-400">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setDebtTab("open")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                debtTab === "open"
+                  ? "bg-accent-500 text-slate-950 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>Belum Dibayar</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  debtTab === "open" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {openDebts.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDebtTab("paid")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                debtTab === "paid"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 border border-transparent"
+              }`}
+            >
+              <CheckCircle className="w-3 h-3" />
+              <span>Sudah Dibayar</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  debtTab === "paid" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {paidDebts.length}
+              </span>
+            </button>
           </div>
+
+          {debtTab === "open" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                {
+                  key: "utang",
+                  title: "Utang Tuan",
+                  list: utangList,
+                  boxClass: "bg-rose-500/[0.04] border-rose-500/20",
+                  titleClass: "text-rose-300",
+                  totalClass: "text-rose-400",
+                  emptyText: "Tidak ada utang yang belum dibayar.",
+                },
+                {
+                  key: "piutang",
+                  title: "Piutang / Uang di Orang",
+                  list: piutangList,
+                  boxClass: "bg-emerald-500/[0.04] border-emerald-500/20",
+                  titleClass: "text-emerald-300",
+                  totalClass: "text-emerald-400",
+                  emptyText: "Tidak ada piutang yang belum dibayar.",
+                },
+              ].map((col) => (
+                <div key={col.key} className={`p-4 rounded-xl border space-y-2.5 ${col.boxClass}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={`font-semibold ${col.titleClass}`}>
+                      {col.title} ({col.list.length})
+                    </span>
+                    <span className={`font-mono font-bold ${col.totalClass}`}>
+                      {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                    </span>
+                  </div>
+                  {col.list.length === 0 ? (
+                    <p className="text-[11px] text-slate-500">{col.emptyText}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {col.list.map((d) => (
+                        <div key={d.id} className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-200 truncate">{d.person}</div>
+                            <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-1">
+                              <span>{d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}</span>
+                              {d.ageDays > 0 && <span>• {d.ageDays}h</span>}
+                              {d.isSnoozed && <span className="text-amber-400">• snooze</span>}
+                              {d.note && <span className="truncate max-w-[140px]">• {d.note}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleSnoozeDebt(d.id)}
+                              title="Tunda reminder 3 hari"
+                              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300"
+                            >
+                              <Clock className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSettleTarget(d);
+                                setSettleAmount(d.amount ? String(d.amount) : "");
+                                setSettleWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
+                              }}
+                              title="Tandai sudah dibayar / lunas"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-500/15 hover:bg-accent-500/25 text-accent-300 border border-accent-500/30 text-[10px] font-semibold transition"
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                              Tandai Lunas
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDebt(d.id)}
+                              title="Hapus catatan"
+                              className="p-1 text-slate-500 hover:text-rose-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                {
+                  key: "paid-utang",
+                  title: "Utang Sudah Dibayar",
+                  list: paidUtangList,
+                  emptyText: "Belum ada riwayat utang yang sudah dibayar.",
+                },
+                {
+                  key: "paid-piutang",
+                  title: "Piutang Sudah Dibayar",
+                  list: paidPiutangList,
+                  emptyText: "Belum ada riwayat piutang yang sudah dibayar.",
+                },
+              ].map((col) => (
+                <div key={col.key} className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-300">
+                      {col.title} ({col.list.length})
+                    </span>
+                    <span className="font-mono text-slate-300 font-bold">
+                      {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                    </span>
+                  </div>
+                  {col.list.length === 0 ? (
+                    <p className="text-[11px] text-slate-500">{col.emptyText}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {col.list.map((d) => {
+                        const wName = d.targetWalletId ? wallets.find((w) => w.id === d.targetWalletId)?.name : "";
+                        return (
+                          <div key={d.id} className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-300 truncate">{d.person}</div>
+                              <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-1">
+                                <span>{d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}</span>
+                                {d.paidAt && <span>• {formatShortDate(d.paidAt, false)}</span>}
+                                {wName && <span>• {wName}</span>}
+                                {d.note && <span className="truncate max-w-[140px]">• {d.note}</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 text-[10px] font-semibold">
+                                <CheckCircle className="w-3 h-3" />
+                                Lunas
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDebt(d.id)}
+                                title="Hapus riwayat"
+                                className="p-1 text-slate-500 hover:text-rose-400"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Hero Card: Total Pos Tabungan */}
