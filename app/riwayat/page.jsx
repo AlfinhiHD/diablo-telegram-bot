@@ -145,7 +145,7 @@ function RiwayatContent() {
               onClick={() => setFilterWallet("ALL")}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition border flex items-center gap-1.5 ${
                 filterWallet === "ALL"
-                  ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm"
+                  ? "bg-accent-500 text-slate-950 border-accent-400 shadow-sm"
                   : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700"
               }`}
             >
@@ -164,7 +164,7 @@ function RiwayatContent() {
                   onClick={() => setFilterWallet(w.id)}
                   className={`px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition border flex items-center gap-1.5 ${
                     active
-                      ? "bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm"
+                      ? "bg-accent-500 text-slate-950 border-accent-400 shadow-sm"
                       : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700"
                   }`}
                 >
@@ -187,7 +187,7 @@ function RiwayatContent() {
               placeholder="Cari transaksi (misal: kopi, mousepad, ngamen)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+              className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent-500 transition"
             />
           </div>
 
@@ -201,7 +201,7 @@ function RiwayatContent() {
                   onClick={() => setFilterIntent(intent)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                     active
-                      ? "bg-emerald-500 text-slate-950 shadow-sm"
+                      ? "bg-accent-500 text-slate-950 shadow-sm"
                       : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
                   }`}
                 >
@@ -216,7 +216,7 @@ function RiwayatContent() {
         <section className="space-y-6">
           {filtered.length === 0 ? (
             <div className="bento-card rounded-2xl p-8 text-center flex flex-col items-center justify-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <div className="w-14 h-14 rounded-2xl bg-accent-500/15 border border-accent-500/30 flex items-center justify-center text-accent-300">
                 <ReceiptText className="w-7 h-7" />
               </div>
               <div>
@@ -301,7 +301,7 @@ function RiwayatContent() {
                                       disabled={movingTxId === tx.id}
                                       onChange={(e) => handleChangeWallet(tx.id, e.target.value)}
                                       title="Pindah sumber dana"
-                                      className="bg-slate-800/90 text-slate-300 border border-slate-700/80 rounded px-1.5 py-0.5 text-[10px] focus:outline-none focus:border-emerald-500 cursor-pointer"
+                                      className="bg-slate-800/90 text-slate-300 border border-slate-700/80 rounded px-1.5 py-0.5 text-[10px] focus:outline-none focus:border-accent-500 cursor-pointer"
                                     >
                                       {!tx.walletId && <option value="">Pilih Dana</option>}
                                       {wallets.map((w) => (

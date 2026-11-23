@@ -1,16 +1,70 @@
 @import "tailwindcss";
 
-:root {
-  --color-background: #020617;
-  --color-primary: #0F172A;
-  --color-secondary: #1E293B;
-  --color-cta: #22C55E;
-  --color-text: #F8FAFC;
-  --color-muted: #94A3B8;
+@theme {
+  /* Lucario Brand Accent (Blue & Aura Cyan) */
+  --color-accent-200: #b9ecfd;
+  --color-accent-300: #66d9ef;
+  --color-accent-400: #65a6df;
+  --color-accent-500: #5c98cd;
+  --color-accent-600: #4a82b5;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 16px 36px -6px rgba(0, 0, 0, 0.6);
+  /* Lucario Steel-Navy Neutral Scale */
+  --color-slate-100: #f8f8f2;
+  --color-slate-200: #eaece6;
+  --color-slate-300: #d5dbe2;
+  --color-slate-400: #a3b3c4;
+  --color-slate-500: #8597aa;
+  --color-slate-600: #6a7d92;
+  --color-slate-700: #435d75;
+  --color-slate-800: #344a5e;
+  --color-slate-900: #1e2c39;
+  --color-slate-950: #141c25;
+
+  /* Lucario Semantic Status Scales */
+  --color-emerald-200: #c2ebba;
+  --color-emerald-300: #93da83;
+  --color-emerald-400: #72cc5a;
+  --color-emerald-500: #72c05d;
+  --color-emerald-950: #162b20;
+
+  --color-teal-400: #66d9ef;
+
+  --color-amber-200: #f4eba2;
+  --color-amber-300: #e6db74;
+  --color-amber-400: #ffbc4f;
+  --color-amber-500: #ffab28;
+
+  --color-rose-300: #ffa08a;
+  --color-rose-400: #ff8266;
+  --color-rose-500: #ff6541;
+
+  --color-purple-300: #d4a9ff;
+  --color-purple-400: #ca94ff;
+  --color-purple-500: #b87af5;
+
+  --color-blue-400: #65a6df;
+  --color-blue-500: #5c98cd;
+
+  --color-sky-400: #66d9ef;
+  --color-sky-500: #66d9ef;
+
+  --color-fuchsia-400: #fa73a4;
+  --color-fuchsia-500: #f92672;
+}
+
+:root {
+  --color-background: #19242f;
+  --color-primary: #2b3e50;
+  --color-secondary: #243343;
+  --color-cta: #5c98cd;
+  --color-accent: #66d9ef;
+  --color-positive: #72c05d;
+  --color-text: #f8f8f2;
+  --color-muted: #99a8b8;
+
+  --shadow-sm: 0 1px 2px rgba(15, 22, 28, 0.35);
+  --shadow-md: 0 8px 24px -4px rgba(15, 22, 28, 0.5);
+  --shadow-lg: 0 16px 36px -6px rgba(15, 22, 28, 0.65);
 }
 
 * {
@@ -37,38 +91,43 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Modern Fintech Ambient Canvas (Copilot / Mercury / Wise inspired) */
+/* Lucario Steel-Blue Ambient Canvas */
 .bg-fintech-canvas {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -15%, rgba(34, 197, 94, 0.08), transparent),
-    radial-gradient(ellipse 60% 40% at 85% 10%, rgba(56, 189, 248, 0.06), transparent),
-    #020617;
+    radial-gradient(ellipse 80% 45% at 50% -12%, rgba(92, 152, 205, 0.16), transparent),
+    radial-gradient(ellipse 55% 38% at 88% 8%, rgba(102, 217, 239, 0.08), transparent),
+    linear-gradient(180deg, #19242f 0%, #141c25 100%);
 }
 
 /* Clean Bento Surface Layers */
 .bento-card {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.85) 0%, rgba(11, 17, 32, 0.95) 100%);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, rgba(43, 62, 80, 0.92) 0%, rgba(36, 51, 67, 0.96) 100%);
+  border: 1px solid rgba(92, 152, 205, 0.22);
   box-shadow:
     var(--shadow-md),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    inset 0 1px 0 0 rgba(248, 248, 242, 0.06);
   backdrop-filter: blur(16px);
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
 .bento-card:hover {
-  border-color: rgba(148, 163, 184, 0.22);
+  border-color: rgba(102, 217, 239, 0.34);
 }
 
 .bento-subcard {
-  background: rgba(2, 6, 23, 0.65);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: rgba(36, 51, 67, 0.84);
+  border: 1px solid rgba(153, 168, 184, 0.16);
   transition: border-color 180ms ease, background-color 180ms ease;
 }
 
 .bento-subcard:hover {
-  border-color: rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.65);
+  border-color: rgba(92, 152, 205, 0.4);
+  background: rgba(43, 62, 80, 0.92);
+}
+
+select option {
+  background-color: #19242f;
+  color: #f8f8f2;
 }
 
 /* Custom Scrollbar */
@@ -77,14 +136,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #020617;
+  background: #141c25;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E293B;
+  background: #344a5e;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #5c98cd;
 }
 
 /* Custom Number Inputs - Hide Browser Native Spin Buttons */

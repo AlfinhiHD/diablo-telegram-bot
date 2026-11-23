@@ -35,14 +35,14 @@ export default function Nav({ userId, profile, onQuickLog }) {
   return (
     <>
       {/* Top Navbar for Desktop & Tablet */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group">
             <DiabloAvatar className="w-9 h-9" showBadge={true} />
             <div>
               <div className="font-heading font-bold text-sm tracking-tight text-slate-100 flex items-center gap-2">
                 <span>Diablo Finance</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono hidden xs:inline-block">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-300 border border-accent-500/30 font-mono hidden xs:inline-block">
                   Butler
                 </span>
               </div>
@@ -71,7 +71,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
           </Link>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden sm:flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+          <nav className="hidden sm:flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
             {links.map(({ href, label, icon: Icon }) => {
               const active = pathname === href;
               return (
@@ -80,8 +80,8 @@ export default function Nav({ userId, profile, onQuickLog }) {
                   href={href}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
                     active
-                      ? "bg-emerald-500/15 text-emerald-400 shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                      ? "bg-accent-500/20 text-accent-300 border border-accent-500/30 shadow-sm"
+                      : "border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -96,7 +96,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
             {onQuickLog && (
               <button
                 onClick={onQuickLog}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-semibold transition"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-500 hover:bg-accent-400 text-slate-950 text-xs font-semibold transition shadow-sm shadow-accent-500/20"
               >
                 <span>+ Catat</span>
               </button>
@@ -118,7 +118,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
       </header>
 
       {/* Mobile Floating Bottom Bar */}
-      <nav className="sm:hidden fixed bottom-4 inset-x-4 z-40 bg-slate-900/90 border border-slate-800 backdrop-blur-lg rounded-2xl p-1.5 shadow-2xl flex items-center justify-around">
+      <nav className="sm:hidden fixed bottom-4 inset-x-4 z-40 bg-slate-950/92 border border-slate-800 backdrop-blur-lg rounded-2xl p-1.5 shadow-2xl flex items-center justify-around">
         {links.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
@@ -127,7 +127,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
               href={href}
               className={`flex flex-col items-center justify-center flex-1 py-1.5 px-2 rounded-xl text-[10px] font-medium transition ${
                 active
-                  ? "bg-emerald-500/15 text-emerald-400 font-semibold"
+                  ? "bg-accent-500/20 text-accent-300 font-semibold"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
@@ -140,7 +140,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
         {onQuickLog && (
           <button
             onClick={onQuickLog}
-            className="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl bg-emerald-500 text-slate-950 font-bold text-[10px] shrink-0"
+            className="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-bold text-[10px] shrink-0"
           >
             <span>+ Catat</span>
           </button>

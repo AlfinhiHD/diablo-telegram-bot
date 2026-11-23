@@ -24,7 +24,7 @@ function LoginContent() {
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 mb-4 shadow-lg shadow-emerald-500/5">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent-500/15 border border-accent-500/35 text-accent-300 mb-4 shadow-lg shadow-accent-500/10">
             <svg
               className="w-7 h-7"
               fill="none"
@@ -102,17 +102,17 @@ function LoginContent() {
           {/* Steps */}
           <div className="space-y-3">
             <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold shrink-0">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-500/20 text-accent-300 text-xs font-bold shrink-0">
                 1
               </span>
               <div className="text-xs text-slate-300">
                 Buka bot Telegram{" "}
-                <span className="font-semibold text-emerald-400">@diablofin_bot</span>.
+                <span className="font-semibold text-accent-300">@diablofin_bot</span>.
               </div>
             </div>
 
             <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold shrink-0">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-500/20 text-accent-300 text-xs font-bold shrink-0">
                 2
               </span>
               <div className="text-xs text-slate-300">
@@ -121,7 +121,7 @@ function LoginContent() {
             </div>
 
             <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold shrink-0">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-500/20 text-accent-300 text-xs font-bold shrink-0">
                 3
               </span>
               <div className="text-xs text-slate-300">
@@ -135,7 +135,7 @@ function LoginContent() {
             href="https://t.me/diablofin_bot"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-sm transition shadow-lg shadow-emerald-500/20"
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-sm transition shadow-lg shadow-accent-500/20"
           >
             <svg
               className="w-5 h-5"
@@ -172,7 +172,7 @@ function LoginContent() {
                   placeholder="Paste token di sini..."
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
-                  className="flex-1 px-3 py-2 text-xs bg-slate-900/90 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="flex-1 px-3 py-2 text-xs bg-slate-900/90 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-500 font-mono"
                 />
                 <button
                   type="submit"
@@ -198,7 +198,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#020617] flex items-center justify-center text-slate-400 text-sm">
+        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-sm">
           Memuat...
         </div>
       }

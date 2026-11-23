@@ -14,17 +14,21 @@
 
 ## Global Rules
 
-### Color Palette
+### Color Palette (Lucario Theme)
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
-| Primary | `#0F172A` | `--color-primary` |
-| Secondary | `#1E293B` | `--color-secondary` |
-| CTA/Accent | `#22C55E` | `--color-cta` |
-| Background | `#020617` | `--color-background` |
-| Text | `#F8FAFC` | `--color-text` |
+| Background Canvas | `#19242F` | `--color-background` |
+| Deep Surface / Navbar | `#141C25` | `--color-slate-950` |
+| Primary Card | `#2B3E50` | `--color-primary` |
+| Secondary Panel | `#243343` | `--color-secondary` |
+| CTA / Brand Accent | `#5C98CD` | `--color-cta` |
+| Aura Cyan Highlight | `#66D9EF` | `--color-accent` |
+| Positive / Income / Safe | `#72C05D` | `--color-positive` |
+| Text | `#F8F8F2` | `--color-text` |
+| Muted Text | `#99A8B8` | `--color-muted` |
 
-**Color Notes:** Dark bg + green positive indicators
+**Color Notes:** Lucario dark steel-blue surfaces (`#19242F` / `#2B3E50` / `#243343`), Lucario blue/cyan UI accents (`#5C98CD` / `#66D9EF`), warm off-white text (`#F8F8F2`), and semantic syntax colors (`#72C05D` positive green, `#FFAB28` amber warning, `#FF6541` coral-red danger, `#CA94FF` lavender advisory).
 
 ### Typography
 

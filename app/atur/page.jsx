@@ -181,7 +181,7 @@ function AturContent() {
           {/* BAGIAN 1: Profil & Identitas Tuan */}
           <section className="bento-card rounded-2xl p-6 space-y-4">
             <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              <User className="w-4 h-4 text-emerald-400" />
+              <User className="w-4 h-4 text-accent-300" />
               1. Identitas & Panggilan
             </h2>
 
@@ -194,7 +194,7 @@ function AturContent() {
                 placeholder="Contoh: Alfin"
                 value={ownerName}
                 onChange={(e) => setOwnerName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-emerald-500 font-medium"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-accent-500 font-medium"
               />
               <p className="text-[10px] text-slate-500 mt-1">
                 Panggilan yang digunakan Diablo saat menyapa Tuan di Dashboard dan Telegram.
@@ -205,7 +205,7 @@ function AturContent() {
           {/* BAGIAN 2: Gaji & Siklus Gajian (Custom Stepper Inputs) */}
           <section className="bento-card rounded-2xl p-6 space-y-4">
             <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-emerald-400" />
+              <Wallet className="w-4 h-4 text-accent-300" />
               2. Pendapatan & Siklus Gajian
             </h2>
 
@@ -233,7 +233,7 @@ function AturContent() {
                     placeholder="Contoh: 6000000"
                     value={monthlyIncome}
                     onChange={(e) => setMonthlyIncome(e.target.value)}
-                    className="w-full pl-10 pr-20 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-emerald-500 font-mono font-semibold"
+                    className="w-full pl-10 pr-20 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-accent-500 font-mono font-semibold"
                   />
                   {/* Custom Up/Down Stepper Buttons */}
                   <div className="absolute right-1.5 flex items-center gap-1">
@@ -269,7 +269,7 @@ function AturContent() {
                       key={chip.label}
                       type="button"
                       onClick={() => setMonthlyIncome((v) => (Number(v) || 0) + chip.val)}
-                      className="px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-emerald-500/20 hover:text-emerald-300 text-[10px] text-slate-400 font-mono transition border border-slate-700/60"
+                      className="px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-accent-500/20 hover:text-accent-300 text-[10px] text-slate-400 font-mono transition border border-slate-700/60"
                     >
                       {chip.label}
                     </button>
@@ -314,7 +314,7 @@ function AturContent() {
                     placeholder="25"
                     value={paydayDate}
                     onChange={(e) => setPaydayDate(e.target.value)}
-                    className="w-full py-2 bg-slate-900 border-y border-slate-700 text-center text-sm text-slate-100 focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                    className="w-full py-2 bg-slate-900 border-y border-slate-700 text-center text-sm text-slate-100 focus:outline-none focus:border-accent-500 font-mono font-bold"
                   />
                   <button
                     type="button"
@@ -336,7 +336,7 @@ function AturContent() {
                       onClick={() => setPaydayDate(d)}
                       className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono transition border ${
                         String(paydayDate) === d
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
+                          ? "bg-accent-500/20 text-accent-300 border-accent-500/40 font-bold"
                           : "bg-slate-800/80 text-slate-400 border-slate-700/60 hover:bg-slate-700"
                       }`}
                     >
@@ -352,7 +352,7 @@ function AturContent() {
           <section className="bento-card rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <CreditCard className="w-4 h-4 text-accent-300" />
                 3. Tagihan Tetap (Fixed Costs)
               </h2>
               <span className="text-xs text-slate-400 font-mono">
@@ -412,7 +412,7 @@ function AturContent() {
                   placeholder="Nama tagihan (misal: Kos, Spotify)"
                   value={newCostName}
                   onChange={(e) => setNewCostName(e.target.value)}
-                  className="sm:col-span-3 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  className="sm:col-span-3 px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent-500"
                 />
                 <div className="sm:col-span-2 relative flex items-center">
                   <span className="absolute left-2.5 text-[11px] font-mono text-slate-500 pointer-events-none">Rp</span>
@@ -421,7 +421,7 @@ function AturContent() {
                     placeholder="Nominal/bln"
                     value={newCostAmount}
                     onChange={(e) => setNewCostAmount(e.target.value)}
-                    className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                    className="w-full pl-8 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent-500 font-mono"
                   />
                 </div>
                 <input
@@ -431,7 +431,7 @@ function AturContent() {
                   placeholder="Tgl (1-28)"
                   value={newCostDueDay}
                   onChange={(e) => setNewCostDueDay(e.target.value)}
-                  className="sm:col-span-1 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="sm:col-span-1 px-2.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent-500 font-mono"
                 />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -448,7 +448,7 @@ function AturContent() {
                       onClick={() => setNewCostCycle(opt.v)}
                       className={`px-2 py-0.5 rounded border transition ${
                         newCostCycle === opt.v
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold"
+                          ? "bg-accent-500/20 text-accent-300 border-accent-500/40 font-semibold"
                           : "bg-slate-900 text-slate-400 border-slate-800"
                       }`}
                     >
@@ -512,7 +512,7 @@ function AturContent() {
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 disabled:opacity-50 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20"
+              className="px-6 py-2.5 rounded-xl bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-50 text-slate-950 font-bold text-xs transition shadow-lg shadow-accent-500/20"
             >
               {saving ? "Menyimpan..." : "Simpan Pengaturan"}
             </button>
@@ -523,7 +523,7 @@ function AturContent() {
         <section className="bento-card rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-accent-300" />
               Akun & Koneksi Telegram
             </h2>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -576,7 +576,7 @@ export default function AturPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#020617] flex items-center justify-center text-slate-400 text-sm">
+        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-sm">
           Memuat...
         </div>
       }

@@ -296,7 +296,7 @@ export default function TabunganPage() {
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-fintech-canvas flex items-center justify-center p-4">
-        <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+        <div className="w-8 h-8 rounded-full border-2 border-accent-500 border-t-transparent animate-spin" />
       </div>
     );
   }
@@ -340,13 +340,13 @@ export default function TabunganPage() {
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition border border-slate-700"
               >
-                <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
+                <ArrowLeftRight className="w-3.5 h-3.5 text-accent-300" />
                 <span>Pindah / Bayar PL</span>
               </button>
             )}
             <button
               onClick={() => setIsAddOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition shadow-lg shadow-emerald-500/20"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition shadow-lg shadow-accent-500/20"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Pos</span>
@@ -359,7 +359,7 @@ export default function TabunganPage() {
           <section className="bento-card rounded-2xl p-5 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-400" />
+                <Wallet className="w-4 h-4 text-accent-300" />
                 <span>Sumber Dana & PayLater</span>
               </h2>
               <span className="text-xs font-mono text-emerald-400 font-bold">
@@ -428,7 +428,7 @@ export default function TabunganPage() {
                 Otomatis kirim pengingat ke Telegram tiap pagi jika ada tagihan dekat jatuh tempo atau utang macet
               </p>
             </div>
-            <Link href="/atur" className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold">
+            <Link href="/atur" className="text-[11px] text-accent-300 hover:text-accent-200 font-semibold">
               Edit di Atur →
             </Link>
           </div>
@@ -480,7 +480,7 @@ export default function TabunganPage() {
                         setPayBillAmount(String(b.dueAmount || b.amount));
                         setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-[10px] font-semibold shrink-0 transition"
+                      className="px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[10px] font-semibold shrink-0 transition"
                     >
                       Tandai Bayar
                     </button>
@@ -502,7 +502,7 @@ export default function TabunganPage() {
               onClick={() => setDebtModalOpen(true)}
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
             >
-              <Plus className="w-3.5 h-3.5 text-emerald-400" />
+              <Plus className="w-3.5 h-3.5 text-accent-300" />
               Catat Utang/Piutang
             </button>
           </div>
@@ -616,7 +616,7 @@ export default function TabunganPage() {
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Total Pos Tabungan
             </span>
-            <span className="text-xs font-bold text-emerald-400">{totalProgress}% dari Target</span>
+            <span className="text-xs font-bold text-accent-300">{totalProgress}% dari Target</span>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
@@ -628,14 +628,14 @@ export default function TabunganPage() {
             </div>
           </div>
 
-          <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5">
-            <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style={{ width: `${totalProgress}%` }} />
+          <div className="w-full h-3 bg-slate-950/70 border border-slate-800/60 rounded-full overflow-hidden p-0.5">
+            <div className="h-full bg-gradient-to-r from-accent-500 to-accent-300 rounded-full transition-all duration-500" style={{ width: `${totalProgress}%` }} />
           </div>
         </section>
 
         {/* Telegram Shortcut Hint */}
-        <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 flex items-center gap-3 text-xs text-emerald-300/90">
-          <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="p-3.5 rounded-2xl bg-accent-500/10 border border-accent-500/25 flex items-center gap-3 text-xs text-accent-200">
+          <Sparkles className="w-4 h-4 text-accent-300 shrink-0" />
           <span>
             <strong>Tips Bot:</strong> Ketik <code className="font-mono">/reminder</code> untuk cek tagihan & utang macet, <code className="font-mono">/saldo</code> untuk cek surplus, atau <code className="font-mono">audit bni 35k cash 273k</code> untuk cek gap instan.
           </span>
@@ -649,7 +649,7 @@ export default function TabunganPage() {
                 <PiggyBank className="w-6 h-6" />
               </div>
               <h3 className="text-sm font-semibold text-slate-200">Belum Ada Pos Tabungan</h3>
-              <button onClick={() => setIsAddOpen(true)} className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">
+              <button onClick={() => setIsAddOpen(true)} className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">
                 <Plus className="w-4 h-4" /> Tambah Pos Sekarang
               </button>
             </div>
@@ -673,8 +673,8 @@ export default function TabunganPage() {
                         <span className="text-base font-bold font-heading text-emerald-400">{formatRupiah(saved)}</span>
                         <span className="text-slate-400 text-[11px]">Target: {formatRupiah(target)}</span>
                       </div>
-                      <div className="mt-2 w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+                      <div className="mt-2 w-full h-2 bg-slate-950/70 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-accent-500 to-accent-300 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
                       </div>
                       <div className="mt-1 text-right text-[10px] text-slate-500 font-mono">{pct}% tercapai</div>
                     </div>
@@ -687,7 +687,7 @@ export default function TabunganPage() {
                         }}
                         className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition"
                       >
-                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                        <TrendingUp className="w-3.5 h-3.5 text-accent-300" />
                         <span>+ Isi Tabungan</span>
                       </button>
                     </div>
@@ -758,7 +758,7 @@ export default function TabunganPage() {
                   <button type="button" onClick={() => setAuditOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">
                     Tutup
                   </button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">
                     {actionLoading ? "Menyimpan..." : "Sesuaikan Saldo"}
                   </button>
                 </div>
@@ -803,7 +803,7 @@ export default function TabunganPage() {
                   <button type="button" onClick={() => setPayBillTarget(null)} className="px-3 py-1.5 text-xs text-slate-400">
                     Batal
                   </button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">
                     {actionLoading ? "Memproses..." : "Konfirmasi Bayar"}
                   </button>
                 </div>
@@ -826,7 +826,7 @@ export default function TabunganPage() {
                 <input type="number" placeholder="Alokasi Bulanan (Opsional, Rp)" value={newPotMonthly} onChange={(e) => setNewPotMonthly(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setIsAddOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">Simpan Pos</button>
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">Simpan Pos</button>
                 </div>
               </form>
             </div>
@@ -844,7 +844,7 @@ export default function TabunganPage() {
                 <input type="number" autoFocus required placeholder="Nominal Tambahan (Rp)" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 font-mono" />
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setTopUpPotId(null)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading || !topUpAmount} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">Setor</button>
+                  <button type="submit" disabled={actionLoading || !topUpAmount} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">Setor</button>
                 </div>
               </form>
             </div>
@@ -876,7 +876,7 @@ export default function TabunganPage() {
                 <input type="number" required placeholder="Nominal (Rp)" value={trAmount} onChange={(e) => setTrAmount(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setTransferOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">Pindahkan</button>
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">Pindahkan</button>
                 </div>
               </form>
             </div>
@@ -897,7 +897,7 @@ export default function TabunganPage() {
                       onClick={() => setDebtType(t)}
                       className={`py-2 rounded-xl text-xs font-semibold border ${
                         debtType === t
-                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                          ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
                           : "bg-slate-900 text-slate-400 border-slate-800"
                       }`}
                     >
@@ -910,7 +910,7 @@ export default function TabunganPage() {
                 <input type="text" placeholder="Catatan (opsional)" value={debtNote} onChange={(e) => setDebtNote(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100" />
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setDebtModalOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs">Simpan</button>
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">Simpan</button>
                 </div>
               </form>
             </div>
@@ -943,7 +943,7 @@ export default function TabunganPage() {
                 )}
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setSettleTarget(null)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-semibold text-xs flex items-center gap-1">
+                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs flex items-center gap-1 transition">
                     <CheckCircle className="w-3.5 h-3.5" /> Konfirmasi Lunas
                   </button>
                 </div>

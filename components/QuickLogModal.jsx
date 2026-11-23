@@ -53,7 +53,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <div className="w-8 h-8 rounded-lg bg-accent-500/15 border border-accent-500/35 flex items-center justify-center text-accent-300">
               <Sparkles className="w-4 h-4" />
             </div>
             <h3 className="font-heading font-semibold text-slate-100 text-sm">
@@ -85,7 +85,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={"Contoh keluar: kopi 15k & makan siang 20k\nContoh masuk: dapet duit 50k dari ngamen"}
-              className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 transition resize-none font-sans"
+              className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-accent-500 transition resize-none font-sans"
             />
             <p className="text-[11px] text-slate-500 mt-1">
               AI Diablo otomatis bedakan pengeluaran vs pemasukan, kategori, dan intent.
@@ -95,7 +95,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
           {activeWallets.length > 0 && (
             <div>
               <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5">
-                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                <Wallet className="w-3.5 h-3.5 text-accent-300" />
                 <span>Sumber / Tujuan Dana</span>
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -104,7 +104,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
                   onClick={() => setWalletId("")}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
                     walletId === ""
-                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
                       : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
                   }`}
                 >
@@ -117,7 +117,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
                     onClick={() => setWalletId(w.id)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
                       walletId === w.id
-                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                        ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
                         : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
                     }`}
                   >
@@ -140,7 +140,7 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
             <button
               type="submit"
               disabled={loading || !text.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 text-xs font-semibold transition shadow-lg shadow-emerald-500/20"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 text-xs font-semibold transition shadow-lg shadow-accent-500/20"
             >
               {loading ? (
                 <span>Mencatat...</span>

@@ -31,7 +31,7 @@ export default function RootLayout({ children }) {
       lang="id"
       className={`dark ${jakarta.variable} ${ibmSans.variable} ${ibmMono.variable}`}
     >
-      <body className="bg-[#020617] text-[#F8FAFC] antialiased selection:bg-[#22C55E]/25 selection:text-white min-h-screen">
+      <body className="bg-[#19242F] text-[#F8F8F2] antialiased selection:bg-[#5C98CD]/35 selection:text-[#F8F8F2] min-h-screen">
         {children}
       </body>
     </html>

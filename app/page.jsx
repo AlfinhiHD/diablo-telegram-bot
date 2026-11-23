@@ -190,7 +190,7 @@ export default function HomePage() {
 
             <button
               onClick={() => setQuickLogOpen(true)}
-              className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold text-xs"
+              className="inline-flex items-center gap-1 text-accent-300 hover:text-accent-200 font-semibold text-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               Catat Transaksi
@@ -231,14 +231,14 @@ export default function HomePage() {
                     href={`/riwayat?wallet=${encodeURIComponent(w.id)}`}
                     className={`p-3 rounded-xl border transition group flex flex-col justify-between gap-2 ${
                       hasCreditDebt
-                        ? "bg-rose-500/[0.08] border-rose-500/30 hover:border-rose-400/50"
+                        ? "bg-rose-500/[0.10] border-rose-500/35 hover:border-rose-400/60"
                         : isCredit
-                        ? "bg-slate-900/50 border-slate-800 hover:border-emerald-500/30"
+                        ? "bg-slate-900/65 border-slate-800 hover:border-accent-500/40"
                         : isLocked
-                        ? "bg-slate-900/40 border-slate-800/80 hover:border-amber-500/30"
+                        ? "bg-slate-900/55 border-slate-800/80 hover:border-amber-500/40"
                         : isDaily
-                        ? "bg-emerald-500/[0.06] border-emerald-500/20 hover:border-emerald-500/40"
-                        : "bg-slate-900/70 border-slate-800 hover:border-slate-700"
+                        ? "bg-accent-500/[0.12] border-accent-500/35 hover:border-accent-300/55"
+                        : "bg-slate-900/75 border-slate-800 hover:border-slate-700"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -297,7 +297,7 @@ export default function HomePage() {
           <div className="bento-subcard rounded-2xl p-5 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-slate-400 font-medium">Dana Harian & Surplus</span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <TrendingUp className="w-4 h-4 text-accent-300" />
             </div>
             <div>
               <div className="text-2xl font-bold font-heading text-slate-100">
@@ -372,7 +372,7 @@ export default function HomePage() {
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-slate-400 font-medium">Utang, Piutang & Aset</span>
-              <PiggyBank className="w-4 h-4 text-emerald-400" />
+              <PiggyBank className="w-4 h-4 text-accent-300" />
             </div>
             <div>
               <div className="text-2xl font-bold font-heading text-emerald-400">
@@ -390,7 +390,7 @@ export default function HomePage() {
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
               <span>Audit, Transfer & Utang</span>
-              <span className="font-semibold text-emerald-400 flex items-center gap-0.5">
+              <span className="font-semibold text-accent-300 flex items-center gap-0.5">
                 Buka <ArrowUpRight className="w-3 h-3" />
               </span>
             </div>
@@ -399,7 +399,7 @@ export default function HomePage() {
 
         {/* UTANG & PIUTANG RINGKAS + RATA-RATA VARIABEL */}
         {debtsSummary && debtsSummary.items?.length > 0 && (
-          <section className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <section className="p-4 rounded-2xl bento-subcard flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
                 <Receipt className="w-4 h-4" />
@@ -429,7 +429,7 @@ export default function HomePage() {
             </div>
             <Link
               href="/tabungan#utang"
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold shrink-0 flex items-center gap-0.5"
+              className="text-xs text-accent-300 hover:text-accent-200 font-semibold shrink-0 flex items-center gap-0.5"
             >
               Lunasi / Snooze <ChevronRight className="w-3.5 h-3.5" />
             </Link>
@@ -437,7 +437,7 @@ export default function HomePage() {
         )}
 
         {/* DIABLO ADVISORY */}
-        <section className="p-4 rounded-2xl bg-slate-900/40 border border-slate-800/80 flex items-start gap-3">
+        <section className="p-4 rounded-2xl bento-subcard flex items-start gap-3">
           <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
             <Sparkles className="w-4 h-4" />
           </div>
@@ -538,7 +538,7 @@ export default function HomePage() {
             </h3>
             <Link
               href="/riwayat"
-              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
+              className="text-xs text-accent-300 hover:text-accent-200 font-medium flex items-center gap-1"
             >
               Lihat Semua <ChevronRight className="w-3.5 h-3.5" />
             </Link>
