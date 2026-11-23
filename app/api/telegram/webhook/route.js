@@ -3,8 +3,12 @@ import {
   getUserProfile,
   saveUserProfile,
   getTransactions,
+  getTransactionById,
   addTransaction,
   updateTransaction,
+  deleteTransaction,
+  findTransaction,
+  editTransactionAmount,
   changeTransactionWallet,
   undoLastTransaction,
   clearUserData,
@@ -13,12 +17,15 @@ import {
   addToPot,
   createLoginToken,
   resolveWallet,
+  adjustWalletBalance,
   transferBetweenWallets,
   computeAuditDiff,
   applyAuditBalances,
   findFixedCost,
   markFixedCostPaid,
   addDebt,
+  upsertDebt,
+  deleteDebt,
   findOpenDebt,
   updateDebt,
   snoozeDebt,
@@ -35,6 +42,8 @@ import { buildReminderTelegramMessage } from "../../../../lib/reminders-tg.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
 import { formatRupiah, toWibParts, fromWib, startOfWibDay } from "../../../../lib/format.js";
 import { getConfig } from "../../../../lib/bundled-config.js";
+
+export const maxDuration = 30;
 
 const BOT_TOKEN = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
 
@@ -229,6 +238,17 @@ async function answerCallbackQuery(callbackQueryId, text = "") {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
+    });
+  } catch {}
+}
+
+async function clearInlineKeyboard(chatId, messageId) {
+  if (!BOT_TOKEN || !chatId || !messageId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/editMessageReplyMarkup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }),
     });
   } catch {}
 }
@@ -886,6 +906,63 @@ export async function POST(req) {
         return NextResponse.json({ ok: true, mode: "debt_snoozed" });
       }
 
+      // 8. Split Bill Follow-up: Teman sudah bayar -> refund saldo dompet
+      if (data.startsWith("split_refund:")) {
+        const [, walletId, amtStr] = data.split(":");
+        const amt = Math.round(Number(amtStr) || 0);
+        if (!walletId || amt <= 0) {
+          await answerCallbackQuery(cbId, "Data split tidak valid");
+          return NextResponse.json({ ok: true });
+        }
+        const res = await adjustWalletBalance(cbUserId, walletId, amt);
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+        if (!res?.wallet) {
+          await answerCallbackQuery(cbId, "Dompet tidak ditemukan");
+          return NextResponse.json({ ok: true });
+        }
+        await answerCallbackQuery(cbId, `+${formatCompactRp(amt)} ke ${res.wallet.name}`);
+        await sendTelegramMessage(
+          cbChatId,
+          `✅ Siap Tuan, patungan *+${formatRupiah(amt)}* dikembalikan ke ${walletEmoji(res.wallet)} *${res.wallet.name}*.\n• Saldo kini: *${formatRupiah(res.wallet.balance)}*`,
+          cbThreadId
+        );
+        return NextResponse.json({ ok: true, mode: "split_refunded" });
+      }
+
+      // 9. Split Bill Follow-up: Teman belum bayar -> catat piutang otomatis
+      if (data.startsWith("split_debt:")) {
+        const [, txId, amtStr] = data.split(":");
+        const amt = Math.round(Number(amtStr) || 0);
+        if (amt <= 0) {
+          await answerCallbackQuery(cbId, "Nominal tidak valid");
+          return NextResponse.json({ ok: true });
+        }
+        const tx = txId ? await getTransactionById(cbUserId, txId) : null;
+        const label = tx?.item ? `Patungan ${tx.item}` : "Patungan";
+        const { debt } = await addDebt(cbUserId, {
+          type: "piutang",
+          person: label,
+          amount: amt,
+          note: tx ? `Split bill dari ${tx.item}` : "Split bill",
+          targetWalletId: tx?.walletId || "",
+        });
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+        await answerCallbackQuery(cbId, "Piutang patungan dicatat!");
+        await sendTelegramMessage(
+          cbChatId,
+          `🧾 Siap Tuan, dicatat ke *Piutang*:\n• Nama: *${debt.person}*\n• Nominal: *${formatRupiah(debt.amount)}*`,
+          cbThreadId
+        );
+        return NextResponse.json({ ok: true, mode: "split_debt_added" });
+      }
+
+      // 10. Split Bill Follow-up: Biarkan saldo tetap
+      if (data === "split_ignore") {
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+        await answerCallbackQuery(cbId, "Saldo dibiarkan tetap");
+        return NextResponse.json({ ok: true, mode: "split_ignored" });
+      }
+
       await answerCallbackQuery(cbId);
       return NextResponse.json({ ok: true });
     }
@@ -1028,11 +1105,7 @@ export async function POST(req) {
     const isUndoRequest =
       text === "/undo" ||
       text.startsWith("/undo@") ||
-      lower === "undo" ||
-      lower === "batal" ||
-      lower === "batalin" ||
-      lower === "batalin dong" ||
-      /^(?:tolong\s+)?(?:undo|batal(?:kan)?|hapus\s+transaksi\s+terakhir|salah\s+catat)\b/i.test(lower);
+      /^(?:tolong\s+)?(?:undo|batal(?:in|kan)?|hapus\s+transaksi\s+terakhir|salah\s+catat)(?:\s+(?:dong|ya|aja|barusan))?$/i.test(lower);
 
     if (isUndoRequest) {
       if (profile?.pendingWalletSelection?.items?.length || profile?.pendingPastExpense?.items?.length || profile?.pendingAuditAdjustment) {
@@ -1371,7 +1444,7 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, mode: "fast_analysis_query" });
     }
 
-    // Foto Struk / QRIS
+    // Foto Struk / QRIS / Mutasi
     if (photos && photos.length > 0) {
       try {
         const largestPhoto = photos[photos.length - 1];
@@ -1380,8 +1453,41 @@ export async function POST(req) {
           ...it,
           source: "telegram-photo",
         }));
-        const res = await processParsedTransactions(userId, chatId, threadId, items, profile, transactions);
-        return NextResponse.json({ ok: true, ...res });
+
+        const transferItems = items.filter((it) => it.type === "transfer" && Number(it.amount) > 0);
+        const regularItems = items.filter((it) => it.type !== "transfer");
+
+        let latestProfile = profile;
+        if (transferItems.length > 0) {
+          const trLines = [];
+          for (const tr of transferItems) {
+            const trRes = await transferBetweenWallets(
+              userId,
+              tr.fromWalletId || "saqu",
+              tr.toWalletId || "saqu_booster",
+              tr.amount
+            );
+            if (!trRes.error) {
+              latestProfile = trRes.profile;
+              trLines.push(
+                `• ${walletEmoji(trRes.fromWallet)} *${trRes.fromWallet.name}* → ${walletEmoji(trRes.toWallet)} *${trRes.toWallet.name}*: *${formatRupiah(trRes.amount)}*`
+              );
+            }
+          }
+          if (trLines.length > 0) {
+            await sendTelegramMessage(
+              chatId,
+              `🔁 *Transfer Internal Terdeteksi dari Mutasi* _(bukan pengeluaran)_:\n${trLines.join("\n")}`,
+              threadId
+            );
+          }
+        }
+
+        if (regularItems.length > 0) {
+          const res = await processParsedTransactions(userId, chatId, threadId, regularItems, latestProfile, transactions);
+          return NextResponse.json({ ok: true, ...res, transfers: transferItems.length });
+        }
+        return NextResponse.json({ ok: true, mode: "photo_transfer_done", count: transferItems.length });
       } catch (err) {
         await sendTelegramMessage(chatId, `Maaf Tuan, struk gagal dibaca: ${err.message}`, threadId);
         return NextResponse.json({ ok: true });
@@ -1432,9 +1538,193 @@ export async function POST(req) {
     // ==========================================
     // SMART LLM UNIFIED ROUTER
     // ==========================================
-    const analysis = await analyzeUserMessage(text, profile, messageTime);
+    const analysis = await analyzeUserMessage(text, profile, transactions, messageTime);
 
-    // 1. LOG_TRANSACTIONS (Pengeluaran, Pemasukan, atau Gabungan)
+    // 1. EXECUTE_OPS (Multi-op: Catat Transaksi + Batch Utang/Piutang + Edit/Split/Hapus Transaksi Lama)
+    if (analysis.action === "EXECUTE_OPS") {
+      const debtUpdates = Array.isArray(analysis.debtUpdates) ? analysis.debtUpdates : [];
+      const txEdits = Array.isArray(analysis.txEdits) ? analysis.txEdits : [];
+      const newTxs = Array.isArray(analysis.transactions) ? analysis.transactions : [];
+
+      // Kasus khusus: 1 pelunasan utang/piutang saja -> pakai alur wallet picker interaktif
+      if (debtUpdates.length === 1 && debtUpdates[0]?.op === "settle" && txEdits.length === 0 && newTxs.length === 0) {
+        const d = debtUpdates[0];
+        const matched = findOpenDebt(profile, d.person, d.type);
+        if (!matched) {
+          await sendTelegramMessage(chatId, `Tidak ditemukan utang/piutang terbuka atas nama *${d.person}*.\n\n${buildDebtsListText(profile)}`, threadId);
+          return NextResponse.json({ ok: true, mode: "debt_settle_not_found" });
+        }
+        const finalAmount = d.amount > 0 ? d.amount : matched.amount;
+        if (!finalAmount || finalAmount <= 0) {
+          await sendTelegramMessage(chatId, `Nominal *${matched.person}* belum diisi Tuan. Sebutkan nominalnya juga ya.`, threadId);
+          return NextResponse.json({ ok: true, mode: "debt_settle_need_amount" });
+        }
+        const isPiutang = matched.type === "piutang";
+        const explicitW = (d.walletId || matched.targetWalletId) ? resolveWallet(profile, d.walletId || matched.targetWalletId) : null;
+        const txItem = {
+          type: isPiutang ? "income" : "expense",
+          amount: finalAmount,
+          item: isPiutang ? `Pelunasan piutang ${matched.person}` : `Bayar utang ${matched.person}`,
+          category: isPiutang ? "Pemasukan" : "Tagihan",
+          intent: isPiutang ? "INCOME" : "NEED",
+          walletId: explicitW?.id || "",
+          walletName: explicitW?.name || "",
+          paymentMethod: explicitW?.name || "QRIS",
+          createdAt: messageTime.toISOString(),
+          timeKnown: true,
+          notes: matched.note || "",
+          source: "telegram-debt",
+        };
+        const res = await processParsedTransactions(userId, chatId, threadId, [txItem], profile, transactions, {
+          settleDebtId: matched.id,
+          customPrompt: isPiutang
+            ? `💚 *Pelunasan piutang ${matched.person} masuk ke dana mana, Tuan?*`
+            : `🔻 *Bayar utang ${matched.person} pakai dana mana, Tuan?*`,
+        });
+        return NextResponse.json({ ok: true, ...res });
+      }
+
+      let curProfile = profile;
+      const summaryLines = [];
+      const splitButtons = [];
+
+      // 1a. Proses batch debtUpdates (upsert / settle / delete)
+      for (const d of debtUpdates) {
+        if (!d?.person) continue;
+        const op = String(d.op || "upsert").toLowerCase();
+        if (op === "delete") {
+          const matched = findOpenDebt(curProfile, d.person, d.type);
+          if (matched) {
+            curProfile = await deleteDebt(userId, matched.id);
+            summaryLines.push(`🗑️ Hapus ${matched.type} *${matched.person}* (${matched.amount ? formatRupiah(matched.amount) : "?"})`);
+          } else {
+            summaryLines.push(`⚠️ ${d.type || "Utang/piutang"} *${d.person}* tidak ditemukan.`);
+          }
+        } else if (op === "settle") {
+          const matched = findOpenDebt(curProfile, d.person, d.type);
+          if (matched) {
+            const payAmt = d.amount > 0 ? d.amount : matched.amount;
+            const settled = await updateDebt(userId, matched.id, { status: "paid" });
+            if (settled?.profile) curProfile = settled.profile;
+            const explicitW = d.walletId ? resolveWallet(curProfile, d.walletId) : null;
+            if (explicitW && payAmt > 0) {
+              const isPiutang = matched.type === "piutang";
+              await addTransaction(userId, {
+                type: isPiutang ? "income" : "expense",
+                amount: payAmt,
+                item: isPiutang ? `Pelunasan piutang ${matched.person}` : `Bayar utang ${matched.person}`,
+                category: isPiutang ? "Pemasukan" : "Tagihan",
+                intent: isPiutang ? "INCOME" : "NEED",
+                walletId: explicitW.id,
+                walletName: explicitW.name,
+                paymentMethod: explicitW.name,
+                createdAt: messageTime.toISOString(),
+                source: "telegram-debt",
+              });
+              curProfile = await getUserProfile(userId);
+              summaryLines.push(`✅ Lunas ${matched.type} *${matched.person}* (${formatRupiah(payAmt)} • ${explicitW.name})`);
+            } else {
+              summaryLines.push(`✅ Lunas ${matched.type} *${matched.person}* (${payAmt ? formatRupiah(payAmt) : "?"})`);
+            }
+          } else {
+            summaryLines.push(`⚠️ ${d.type || "Utang/piutang"} *${d.person}* tidak ditemukan.`);
+          }
+        } else {
+          const amt = d.amountUnknown || !d.amount || d.amount <= 0 ? null : d.amount;
+          const res = await upsertDebt(userId, {
+            type: d.type || "utang",
+            person: d.person,
+            amount: amt,
+            note: d.note || "",
+            targetWalletId: d.walletId || "",
+          });
+          curProfile = res.profile;
+          const tag = res.debt.type === "piutang" ? "🟢 Piutang" : "🔴 Utang";
+          const nextStr = res.debt.amount === null ? "_nominal ?_" : `*${formatRupiah(res.debt.amount)}*`;
+          if (res.mode === "updated") {
+            const prevStr = res.prevAmount === null ? "?" : formatRupiah(res.prevAmount);
+            summaryLines.push(`${tag} *${res.debt.person}*: ${prevStr} → ${nextStr}`);
+          } else if (res.mode === "unchanged") {
+            summaryLines.push(`${tag} *${res.debt.person}*: tetap ${nextStr}`);
+          } else {
+            summaryLines.push(`${tag} *${res.debt.person}*: ${nextStr} _(baru)_`);
+          }
+        }
+      }
+
+      // 1b. Proses txEdits (edit nominal / split bill / hapus transaksi lama)
+      for (const e of txEdits) {
+        const targetTx = findTransaction(transactions, e.txId) || findTransaction(transactions, e.itemQuery);
+        if (!targetTx) {
+          summaryLines.push(`⚠️ Transaksi "${e.itemQuery || e.txId || "?"}" tidak ditemukan di riwayat terbaru.`);
+          continue;
+        }
+        const op = String(e.op || "edit").toLowerCase();
+        if (op === "delete") {
+          await deleteTransaction(userId, targetTx.id, { revertWallet: true });
+          summaryLines.push(
+            `🗑️ Hapus *${targetTx.item}* (${formatRupiah(targetTx.amount)}${targetTx.walletName ? ` • saldo ${targetTx.walletName} dikembalikan` : ""})`
+          );
+        } else if (op === "split" && Number(e.newAmount) > 0) {
+          const res = await editTransactionAmount(userId, targetTx.id, e.newAmount, {
+            item: e.newItem || null,
+            notes: e.note || `Bagi dua dari ${formatRupiah(targetTx.amount)}`,
+            adjustWallet: false,
+          });
+          summaryLines.push(`✂️ Split *${targetTx.item}*: ${formatRupiah(res.oldAmount)} → *${formatRupiah(res.newAmount)}* _(porsi Tuan)_`);
+          if (res.diff > 0) {
+            summaryLines.push(
+              `   ↳ Selisih *${formatRupiah(res.diff)}* belum mengubah saldo ${targetTx.walletName || "dompet"} — pilih status patungannya:`
+            );
+            if (targetTx.walletId) {
+              splitButtons.push([
+                {
+                  text: `✅ Udah dibayar (+${formatRupiah(res.diff)} → ${targetTx.walletName || targetTx.walletId})`,
+                  callback_data: `split_refund:${targetTx.walletId}:${res.diff}`,
+                },
+              ]);
+            }
+            splitButtons.push([
+              {
+                text: `🧾 Belum bayar (Catat Piutang ${formatRupiah(res.diff)})`,
+                callback_data: `split_debt:${targetTx.id}:${res.diff}`,
+              },
+            ]);
+            splitButtons.push([{ text: "👌 Biarkan Saldo Tetap", callback_data: "split_ignore" }]);
+          }
+        } else if (Number(e.newAmount) > 0) {
+          const res = await editTransactionAmount(userId, targetTx.id, e.newAmount, {
+            item: e.newItem || null,
+            notes: e.note || null,
+            adjustWallet: true,
+          });
+          summaryLines.push(
+            `✏️ Revisi *${res.transaction.item}*: ${formatRupiah(res.oldAmount)} → *${formatRupiah(res.newAmount)}*${targetTx.walletName ? ` _(saldo ${targetTx.walletName} disesuaikan)_` : ""}`
+          );
+        }
+      }
+
+      if (summaryLines.length > 0) {
+        await sendTelegramMessage(
+          chatId,
+          `✅ *Siap Tuan, perubahan sudah hamba catat:*\n\n${summaryLines.join("\n")}`,
+          threadId,
+          splitButtons.length ? { inline_keyboard: splitButtons } : null
+        );
+      }
+
+      // 1c. Jika ada transaksi baru di pesan yang sama, catat sekalian
+      if (newTxs.length > 0) {
+        const latestProfile = summaryLines.length > 0 ? await getUserProfile(userId) : curProfile;
+        const latestTxs = summaryLines.length > 0 ? await getTransactions(userId, 250) : transactions;
+        const res = await processParsedTransactions(userId, chatId, threadId, newTxs, latestProfile, latestTxs);
+        return NextResponse.json({ ok: true, mode: "execute_ops", ...res, debts: debtUpdates.length, edits: txEdits.length });
+      }
+
+      return NextResponse.json({ ok: true, mode: "execute_ops", debts: debtUpdates.length, edits: txEdits.length });
+    }
+
+    // 1d. Legacy fallback LOG_TRANSACTIONS
     if (analysis.action === "LOG_TRANSACTIONS" && Array.isArray(analysis.transactions) && analysis.transactions.length > 0) {
       const res = await processParsedTransactions(userId, chatId, threadId, analysis.transactions, profile, transactions);
       return NextResponse.json({ ok: true, ...res });
