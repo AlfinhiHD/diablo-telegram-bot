@@ -334,6 +334,161 @@ async function sendWalletSelectionPrompt(chatId, threadId, items, profile, extra
   await sendTelegramMessage(chatId, msg, threadId, { inline_keyboard: rows });
 }
 
+/** Tampilkan tombol pilih dompet asal/tujuan untuk satu atau beberapa transfer. */
+async function sendTransferWalletPrompt(chatId, threadId, pendingTransfers, profile, pendingItems = []) {
+  const missingSide = pendingTransfers.every((t) => !t.fromWalletId) ? "from" : "to";
+  const excludedIds = new Set(
+    pendingTransfers.map((t) => (missingSide === "from" ? t.toWalletId : t.fromWalletId)).filter(Boolean)
+  );
+  const unlocked = (profile?.wallets || []).filter((w) => !w.locked);
+  let activeWallets =
+    missingSide === "from"
+      ? unlocked.filter((w) => w.role !== "credit" && !excludedIds.has(w.id))
+      : unlocked.filter((w) => !excludedIds.has(w.id));
+  if (activeWallets.length === 0) {
+    activeWallets = missingSide === "from" ? unlocked.filter((w) => w.role !== "credit") : unlocked;
+  }
+
+  const walletName = (id) => {
+    const w = (profile?.wallets || []).find((x) => x.id === id);
+    return w ? `${walletEmoji(w)} *${w.name}*` : `_${id}_`;
+  };
+
+  const transferLines = pendingTransfers.map((tr) => {
+    const fromLabel = tr.fromWalletId ? walletName(tr.fromWalletId) : "_(pilih asal)_";
+    const toLabel = tr.toWalletId ? walletName(tr.toWalletId) : "_(pilih tujuan)_";
+    const noteStr = tr.note ? ` — _${tr.note}_` : "";
+    return `• 🔁 ${fromLabel} → ${toLabel}: *${formatRupiah(tr.amount)}*${noteStr}`;
+  });
+
+  const itemLines = (pendingItems || []).map((s) => {
+    const isInc = s.type === "income";
+    const prefix = isInc ? "💚 +" : "🔻 ";
+    const wTag = s.walletName ? ` [${s.walletName}]` : "";
+    return `• ${prefix}*${s.item}*: ${formatRupiah(s.amount)} (${s.category}${wTag})`;
+  });
+
+  const header =
+    missingSide === "from"
+      ? "🏦 *Kirim / transfer dari sumber dana yang mana, Tuan?*"
+      : "🏦 *Masuk ke dompet tujuan yang mana, Tuan?*";
+
+  const rows = [];
+  for (let i = 0; i < activeWallets.length; i += 2) {
+    const chunk = activeWallets.slice(i, i + 2);
+    rows.push(
+      chunk.map((w) => ({
+        text: `${walletEmoji(w)} ${w.name} (${formatCompactRp(w.balance)})`,
+        callback_data: `pick_wallet:${w.id}`,
+      }))
+    );
+  }
+  rows.push([{ text: "❌ Batal", callback_data: "pick_wallet:cancel" }]);
+
+  const msg =
+    `${header}\n` +
+    `${[...transferLines, ...itemLines].join("\n")}\n\n` +
+    `_Klik salah satu dana di bawah (atau balas nama dananya, misal \`saqu\`, \`bni\`, \`cash\`):_`;
+
+  await sendTelegramMessage(chatId, msg, threadId, { inline_keyboard: rows });
+}
+
+async function executeAndConfirmTransfers(userId, chatId, threadId, transfers, { clearPending = false } = {}) {
+  const succeeded = [];
+  const errors = [];
+  const affectedIds = [];
+  let latestProfile = null;
+
+  for (const tr of transfers) {
+    const result = await transferBetweenWallets(userId, tr.fromWalletId, tr.toWalletId, tr.amount);
+    if (result.error) {
+      errors.push(result.error);
+      continue;
+    }
+    latestProfile = result.profile;
+    succeeded.push({ ...result, note: tr.note || "" });
+    if (!affectedIds.includes(result.fromWallet.id)) affectedIds.push(result.fromWallet.id);
+    if (!affectedIds.includes(result.toWallet.id)) affectedIds.push(result.toWallet.id);
+  }
+
+  if (clearPending) {
+    latestProfile = await saveUserProfile(userId, { pendingWalletSelection: null });
+  }
+
+  if (succeeded.length === 0) {
+    await sendTelegramMessage(chatId, `Maaf Tuan, pindah dana gagal: ${errors[0] || "data transfer tidak valid."}`, threadId);
+    return { succeeded, errors, profile: latestProfile };
+  }
+
+  let reply;
+  if (succeeded.length === 1 && errors.length === 0) {
+    const r = succeeded[0];
+    const isPaylaterPayoff = r.toWallet.role === "credit";
+    reply =
+      `${isPaylaterPayoff ? "✅ *Pembayaran Tagihan PayLater Berhasil!*" : "🔁 *Pindah Dana Berhasil!*"}\n\n` +
+      `• Dari: ${walletEmoji(r.fromWallet)} *${r.fromWallet.name}* → Sisa *${formatRupiah(r.fromWallet.balance)}*\n` +
+      `• Ke: ${walletEmoji(r.toWallet)} *${r.toWallet.name}* → Kini *${formatRupiah(r.toWallet.balance)}*\n` +
+      `• Nominal: *${formatRupiah(r.amount)}*` +
+      (r.note ? `\n• Catatan: ${r.note}` : "");
+  } else {
+    const transferLines = succeeded.map(
+      (r) =>
+        `• ${walletEmoji(r.fromWallet)} *${r.fromWallet.name}* → ${walletEmoji(r.toWallet)} *${r.toWallet.name}*: *${formatRupiah(r.amount)}*${r.note ? ` _(${r.note})_` : ""}`
+    );
+    const balanceLines = affectedIds
+      .map((id) => (latestProfile?.wallets || []).find((w) => w.id === id))
+      .filter(Boolean)
+      .map((w) => `• ${walletEmoji(w)} *${w.name}*: *${formatRupiah(w.balance)}*`);
+
+    reply =
+      `🔁 *Pindah Dana Berhasil!*\n\n` +
+      `${transferLines.join("\n")}\n\n` +
+      `*Saldo Terbaru:*\n${balanceLines.join("\n")}` +
+      (errors.length > 0 ? `\n\n⚠️ ${errors.join("; ")}` : "");
+  }
+
+  await sendTelegramMessage(chatId, reply, threadId);
+  return { succeeded, errors, profile: latestProfile };
+}
+
+async function completePendingTransferSelection(userId, chatId, threadId, pending, wallet, profile, transactions) {
+  const hasCollision = (pending.transfers || []).some(
+    (tr) => (!tr.fromWalletId && tr.toWalletId === wallet.id) || (!tr.toWalletId && tr.fromWalletId === wallet.id)
+  );
+  if (hasCollision) {
+    await sendTelegramMessage(
+      chatId,
+      `Maaf Tuan, dompet asal dan tujuan tidak boleh sama (*${wallet.name}*). Pilih dompet lain ya Tuan.`,
+      threadId
+    );
+    return { ok: false, sameWallet: true };
+  }
+
+  const filledTransfers = (pending.transfers || []).map((tr) => ({
+    ...tr,
+    fromWalletId: tr.fromWalletId || wallet.id,
+    toWalletId: tr.toWalletId || wallet.id,
+  }));
+
+  const hasItems = Boolean(pending.items?.length);
+  const trRes = await executeAndConfirmTransfers(userId, chatId, threadId, filledTransfers, {
+    clearPending: !hasItems,
+  });
+
+  if (hasItems) {
+    const freshProfile = trRes.profile || (await getUserProfile(userId));
+    const resolvedItems = pending.items.map((it) =>
+      it.walletId ? it : { ...it, walletId: wallet.id, walletName: wallet.name, paymentMethod: wallet.name }
+    );
+    await saveAndConfirmTransactions(userId, chatId, threadId, resolvedItems, freshProfile, transactions, {
+      settleDebtId: pending.settleDebtId || null,
+      payBillId: pending.payBillId || null,
+    });
+  }
+
+  return { ok: true };
+}
+
 function buildWalletSummaryText(profile, analytics) {
   const wallets = profile?.wallets || [];
   const ws = analytics?.walletSummary;
@@ -728,6 +883,7 @@ export async function POST(req) {
       // 2. Batal / Pilih Sumber Dana (Wallet Picker)
       if (data === "pick_wallet:cancel") {
         await saveUserProfile(cbUserId, { pendingWalletSelection: null });
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
         await answerCallbackQuery(cbId, "Dibatalkan");
         await sendTelegramMessage(cbChatId, "Siap Tuan, catatan transaksi telah hamba batalkan.", cbThreadId);
         return NextResponse.json({ ok: true, mode: "wallet_pick_cancelled" });
@@ -741,7 +897,7 @@ export async function POST(req) {
         ]);
 
         const pending = profile?.pendingWalletSelection;
-        if (!pending?.items?.length) {
+        if (!pending?.items?.length && !pending?.transfers?.length) {
           await answerCallbackQuery(cbId, "Catatan sudah tersimpan / kedaluwarsa");
           return NextResponse.json({ ok: true });
         }
@@ -752,10 +908,22 @@ export async function POST(req) {
           return NextResponse.json({ ok: true });
         }
 
+        if (pending.mode === "transfer" && pending.transfers?.length) {
+          const res = await completePendingTransferSelection(cbUserId, cbChatId, cbThreadId, pending, wallet, profile, transactions);
+          if (res.sameWallet) {
+            await answerCallbackQuery(cbId, "Dompet asal & tujuan sama");
+            return NextResponse.json({ ok: true, mode: "transfer_wallet_collision" });
+          }
+          await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+          await answerCallbackQuery(cbId, "Transfer dicatat!");
+          return NextResponse.json({ ok: true, mode: "transfer_wallet_picked", walletId: wallet.id });
+        }
+
         const resolvedItems = pending.items.map((it) =>
           it.walletId ? it : { ...it, walletId: wallet.id, walletName: wallet.name, paymentMethod: wallet.name }
         );
 
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
         await answerCallbackQuery(cbId, `Masuk ke ${wallet.name}!`);
         await saveAndConfirmTransactions(cbUserId, cbChatId, cbThreadId, resolvedItems, profile, transactions, {
           settleDebtId: pending.settleDebtId || null,
@@ -1236,10 +1404,14 @@ export async function POST(req) {
     const analytics = computeAnalytics(profile, transactions);
 
     // Tangkap balasan teks NAMA DANA jika ada pendingWalletSelection yang sedang menunggu
-    if (profile?.pendingWalletSelection?.items?.length && !hasNominal && !photos) {
+    if ((profile?.pendingWalletSelection?.items?.length || profile?.pendingWalletSelection?.transfers?.length) && !hasNominal && !photos) {
       const matchedWallet = resolveWallet(profile, text.replace(/^(?:pake|pakai|masuk(?:\s+ke)?|ke|dari)\s+/i, "").trim());
       if (matchedWallet) {
         const pending = profile.pendingWalletSelection;
+        if (pending.mode === "transfer" && pending.transfers?.length) {
+          await completePendingTransferSelection(userId, chatId, threadId, pending, matchedWallet, profile, transactions);
+          return NextResponse.json({ ok: true, mode: "transfer_wallet_text_saved", walletId: matchedWallet.id });
+        }
         const resolvedItems = pending.items.map((it) =>
           it.walletId ? it : { ...it, walletId: matchedWallet.id, walletName: matchedWallet.name, paymentMethod: matchedWallet.name }
         );
@@ -1540,14 +1712,17 @@ export async function POST(req) {
     // ==========================================
     const analysis = await analyzeUserMessage(text, profile, transactions, messageTime);
 
-    // 1. EXECUTE_OPS (Multi-op: Catat Transaksi + Batch Utang/Piutang + Edit/Split/Hapus Transaksi Lama)
+    // 1. EXECUTE_OPS (Multi-op: Transfers + Catat Transaksi + Batch Utang/Piutang + Edit/Split/Hapus Transaksi Lama)
     if (analysis.action === "EXECUTE_OPS") {
       const debtUpdates = Array.isArray(analysis.debtUpdates) ? analysis.debtUpdates : [];
       const txEdits = Array.isArray(analysis.txEdits) ? analysis.txEdits : [];
       const newTxs = Array.isArray(analysis.transactions) ? analysis.transactions : [];
+      const rawTransfers = Array.isArray(analysis.transfers)
+        ? analysis.transfers.filter((t) => Number(t?.amount) > 0)
+        : [];
 
       // Kasus khusus: 1 pelunasan utang/piutang saja -> pakai alur wallet picker interaktif
-      if (debtUpdates.length === 1 && debtUpdates[0]?.op === "settle" && txEdits.length === 0 && newTxs.length === 0) {
+      if (debtUpdates.length === 1 && debtUpdates[0]?.op === "settle" && txEdits.length === 0 && newTxs.length === 0 && rawTransfers.length === 0) {
         const d = debtUpdates[0];
         const matched = findOpenDebt(profile, d.person, d.type);
         if (!matched) {
@@ -1587,6 +1762,50 @@ export async function POST(req) {
       let curProfile = profile;
       const summaryLines = [];
       const splitButtons = [];
+
+      // 1a-pre. Pisahkan transfers yang sudah lengkap vs menunggu pilihan dompet
+      const readyTransfers = [];
+      const pendingTransfers = [];
+      for (const tr of rawTransfers) {
+        const fromW = tr.fromWalletId ? resolveWallet(curProfile, tr.fromWalletId) : null;
+        const toW = tr.toWalletId ? resolveWallet(curProfile, tr.toWalletId) : null;
+        const fromId = fromW?.id || "";
+        const toId = toW?.id || "";
+        if (fromId && toId) {
+          if (fromId === toId) {
+            summaryLines.push(`⚠️ Dompet asal dan tujuan sama (*${fromW.name}*).`);
+          } else {
+            readyTransfers.push({ fromWalletId: fromId, toWalletId: toId, amount: tr.amount, note: tr.note || "" });
+          }
+        } else if (fromId || toId) {
+          pendingTransfers.push({ fromWalletId: fromId, toWalletId: toId, amount: tr.amount, note: tr.note || "" });
+        }
+      }
+
+      if (
+        readyTransfers.length > 0 &&
+        pendingTransfers.length === 0 &&
+        debtUpdates.length === 0 &&
+        txEdits.length === 0 &&
+        newTxs.length === 0
+      ) {
+        await executeAndConfirmTransfers(userId, chatId, threadId, readyTransfers);
+        return NextResponse.json({ ok: true, mode: "transfer_done", count: readyTransfers.length });
+      }
+
+      if (readyTransfers.length > 0) {
+        for (const tr of readyTransfers) {
+          const res = await transferBetweenWallets(userId, tr.fromWalletId, tr.toWalletId, tr.amount);
+          if (res.error) {
+            summaryLines.push(`⚠️ Pindah dana gagal: ${res.error}`);
+          } else {
+            curProfile = res.profile;
+            summaryLines.push(
+              `🔁 *${res.fromWallet.name}* → *${res.toWallet.name}*: *${formatRupiah(res.amount)}*${tr.note ? ` _(${tr.note})_` : ""}`
+            );
+          }
+        }
+      }
 
       // 1a. Proses batch debtUpdates (upsert / settle / delete)
       for (const d of debtUpdates) {
@@ -1637,11 +1856,15 @@ export async function POST(req) {
             amount: amt,
             note: d.note || "",
             targetWalletId: d.walletId || "",
+            additive: op === "add",
           });
           curProfile = res.profile;
           const tag = res.debt.type === "piutang" ? "🟢 Piutang" : "🔴 Utang";
           const nextStr = res.debt.amount === null ? "_nominal ?_" : `*${formatRupiah(res.debt.amount)}*`;
-          if (res.mode === "updated") {
+          if (res.mode === "added_amount") {
+            const prevStr = res.prevAmount === null ? "Rp 0" : formatRupiah(res.prevAmount);
+            summaryLines.push(`${tag} *${res.debt.person}*: ${prevStr} + ${formatRupiah(res.addedAmount)} → ${nextStr}`);
+          } else if (res.mode === "updated") {
             const prevStr = res.prevAmount === null ? "?" : formatRupiah(res.prevAmount);
             summaryLines.push(`${tag} *${res.debt.person}*: ${prevStr} → ${nextStr}`);
           } else if (res.mode === "unchanged") {
@@ -1652,7 +1875,7 @@ export async function POST(req) {
         }
       }
 
-      // 1b. Proses txEdits (edit nominal / split bill / hapus transaksi lama)
+      // 1b. Proses txEdits (edit nominal / split bill / pindah dompet / hapus transaksi lama)
       for (const e of txEdits) {
         const targetTx = findTransaction(transactions, e.txId) || findTransaction(transactions, e.itemQuery);
         if (!targetTx) {
@@ -1665,6 +1888,16 @@ export async function POST(req) {
           summaryLines.push(
             `🗑️ Hapus *${targetTx.item}* (${formatRupiah(targetTx.amount)}${targetTx.walletName ? ` • saldo ${targetTx.walletName} dikembalikan` : ""})`
           );
+        } else if (op === "change_wallet" && e.newWalletId) {
+          const res = await changeTransactionWallet(userId, targetTx.id, e.newWalletId);
+          if (res) {
+            curProfile = res.profile;
+            summaryLines.push(
+              `🔄 Pindah dana *${res.transaction.item}* (${formatRupiah(res.transaction.amount)}): ${targetTx.walletName || "-"} → *${res.wallet.name}*`
+            );
+          } else {
+            summaryLines.push(`⚠️ Dompet "${e.newWalletId}" tidak ditemukan untuk *${targetTx.item}*.`);
+          }
         } else if (op === "split" && Number(e.newAmount) > 0) {
           const res = await editTransactionAmount(userId, targetTx.id, e.newAmount, {
             item: e.newItem || null,
@@ -1713,15 +1946,56 @@ export async function POST(req) {
         );
       }
 
+      if (pendingTransfers.length > 0) {
+        const latestProfile = summaryLines.length > 0 ? await getUserProfile(userId) : curProfile;
+        const latestTxs = summaryLines.length > 0 ? await getTransactions(userId, 250) : transactions;
+        let pendingItems = [];
+        let activeProfile = latestProfile;
+
+        if (newTxs.length > 0) {
+          const allReady = newTxs.every((s) => s.walletId && s.timeKnown !== false);
+          if (allReady) {
+            await saveAndConfirmTransactions(userId, chatId, threadId, newTxs, latestProfile, latestTxs);
+            activeProfile = await getUserProfile(userId);
+          } else {
+            pendingItems = newTxs;
+          }
+        }
+
+        await saveUserProfile(userId, {
+          pendingWalletSelection: {
+            mode: "transfer",
+            transfers: pendingTransfers,
+            items: pendingItems,
+            createdAt: new Date().toISOString(),
+          },
+        });
+        await sendTransferWalletPrompt(chatId, threadId, pendingTransfers, activeProfile, pendingItems);
+        return NextResponse.json({ ok: true, mode: "transfer_pending_wallet", count: pendingTransfers.length });
+      }
+
       // 1c. Jika ada transaksi baru di pesan yang sama, catat sekalian
       if (newTxs.length > 0) {
         const latestProfile = summaryLines.length > 0 ? await getUserProfile(userId) : curProfile;
         const latestTxs = summaryLines.length > 0 ? await getTransactions(userId, 250) : transactions;
         const res = await processParsedTransactions(userId, chatId, threadId, newTxs, latestProfile, latestTxs);
-        return NextResponse.json({ ok: true, mode: "execute_ops", ...res, debts: debtUpdates.length, edits: txEdits.length });
+        return NextResponse.json({
+          ok: true,
+          mode: "execute_ops",
+          ...res,
+          transfers: readyTransfers.length,
+          debts: debtUpdates.length,
+          edits: txEdits.length,
+        });
       }
 
-      return NextResponse.json({ ok: true, mode: "execute_ops", debts: debtUpdates.length, edits: txEdits.length });
+      return NextResponse.json({
+        ok: true,
+        mode: "execute_ops",
+        transfers: readyTransfers.length,
+        debts: debtUpdates.length,
+        edits: txEdits.length,
+      });
     }
 
     // 1d. Legacy fallback LOG_TRANSACTIONS
@@ -1733,19 +2007,30 @@ export async function POST(req) {
     // 2. TRANSFER / BAYAR SPAYLATER
     if (analysis.action === "TRANSFER" && analysis.transfer?.amount > 0) {
       const tr = analysis.transfer;
-      const result = await transferBetweenWallets(userId, tr.fromWalletId, tr.toWalletId, tr.amount);
-      if (result.error) {
-        await sendTelegramMessage(chatId, `Maaf Tuan, pindah dana gagal: ${result.error}`, threadId);
+      const fromW = tr.fromWalletId ? resolveWallet(profile, tr.fromWalletId) : null;
+      const toW = tr.toWalletId ? resolveWallet(profile, tr.toWalletId) : null;
+      if (!fromW || !toW) {
+        if (fromW || toW) {
+          const pendingTransfers = [
+            {
+              fromWalletId: fromW?.id || "",
+              toWalletId: toW?.id || "",
+              amount: tr.amount,
+              note: tr.note || "",
+            },
+          ];
+          await saveUserProfile(userId, {
+            pendingWalletSelection: { mode: "transfer", transfers: pendingTransfers, items: [], createdAt: new Date().toISOString() },
+          });
+          await sendTransferWalletPrompt(chatId, threadId, pendingTransfers, profile);
+          return NextResponse.json({ ok: true, mode: "transfer_pending_wallet", count: 1 });
+        }
+        await sendTelegramMessage(chatId, `Maaf Tuan, dompet asal/tujuan tidak ditemukan.`, threadId);
         return NextResponse.json({ ok: true, mode: "transfer_error" });
       }
-      const isPaylaterPayoff = result.toWallet.role === "credit";
-      const reply =
-        `${isPaylaterPayoff ? "✅ *Pembayaran Tagihan PayLater Berhasil!*" : "🔁 *Pindah Dana Berhasil!*"}\n\n` +
-        `• Dari: ${walletEmoji(result.fromWallet)} *${result.fromWallet.name}* → Sisa *${formatRupiah(result.fromWallet.balance)}*\n` +
-        `• Ke: ${walletEmoji(result.toWallet)} *${result.toWallet.name}* → Kini *${formatRupiah(result.toWallet.balance)}*\n` +
-        `• Nominal: *${formatRupiah(result.amount)}*` +
-        (tr.note ? `\n• Catatan: ${tr.note}` : "");
-      await sendTelegramMessage(chatId, reply, threadId);
+      await executeAndConfirmTransfers(userId, chatId, threadId, [
+        { fromWalletId: fromW.id, toWalletId: toW.id, amount: tr.amount, note: tr.note || "" },
+      ]);
       return NextResponse.json({ ok: true, mode: "transfer_done" });
     }
 
