@@ -9,6 +9,7 @@ import {
   Home,
   PiggyBank,
   History,
+  BarChart3,
   SlidersHorizontal,
   LogOut,
 } from "lucide-react";
@@ -29,6 +30,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
     { href: "/", label: "Beranda", icon: Home },
     { href: "/tabungan", label: "Tabungan", icon: PiggyBank },
     { href: "/riwayat", label: "Riwayat", icon: History },
+    { href: "/laporan", label: "Laporan", icon: BarChart3 },
     { href: "/atur", label: "Atur", icon: SlidersHorizontal },
   ];
 
@@ -118,21 +120,21 @@ export default function Nav({ userId, profile, onQuickLog }) {
       </header>
 
       {/* Mobile Floating Bottom Bar */}
-      <nav className="sm:hidden fixed bottom-4 inset-x-4 z-40 bg-slate-950/92 border border-slate-800 backdrop-blur-lg rounded-2xl p-1.5 shadow-2xl flex items-center justify-around">
+      <nav className="sm:hidden fixed bottom-4 inset-x-3 z-40 bg-slate-950/92 border border-slate-800 backdrop-blur-lg rounded-2xl p-1 shadow-2xl flex items-center justify-around gap-0.5">
         {links.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
             <Link
               key={href}
               href={href}
-              className={`flex flex-col items-center justify-center flex-1 py-1.5 px-2 rounded-xl text-[10px] font-medium transition ${
+              className={`flex flex-col items-center justify-center flex-1 min-w-0 py-1.5 px-1 rounded-xl text-[9px] font-medium transition ${
                 active
                   ? "bg-accent-500/20 text-accent-300 font-semibold"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <Icon className="w-4 h-4 mb-0.5" />
-              <span>{label}</span>
+              <Icon className="w-4 h-4 mb-0.5 shrink-0" />
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
@@ -140,7 +142,7 @@ export default function Nav({ userId, profile, onQuickLog }) {
         {onQuickLog && (
           <button
             onClick={onQuickLog}
-            className="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-bold text-[10px] shrink-0"
+            className="flex flex-col items-center justify-center py-1.5 px-2.5 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-bold text-[10px] shrink-0"
           >
             <span>+ Catat</span>
           </button>

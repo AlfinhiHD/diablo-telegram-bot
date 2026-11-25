@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import DiabloAvatar from "@/components/DiabloAvatar";
 import QuickLogModal from "@/components/QuickLogModal";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, formatShortDate } from "@/lib/format";
+import { listAvailablePeriods, computePeriodReport } from "@/lib/period-report";
 import {
   Wallet,
   PiggyBank,
@@ -24,11 +25,13 @@ import {
   Bell,
   CreditCard,
   TrendingUp,
+  BarChart3,
 } from "lucide-react";
 
 export default function HomePage() {
   const { data, loading, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState("");
 
   async function handleToggleIntent(txId) {
     try {
@@ -57,6 +60,29 @@ export default function HomePage() {
     }
   }
 
+  const profile = data?.profile;
+  const analytics = data?.analytics;
+  const transactions = data?.transactions || [];
+  const periods = useMemo(
+    () => listAvailablePeriods(transactions, profile?.paydayDate || 25),
+    [transactions, profile?.paydayDate]
+  );
+  const activePeriodKey =
+    selectedPeriodKey && periods.some((p) => p.key === selectedPeriodKey)
+      ? selectedPeriodKey
+      : periods[0]?.key || "";
+  const activeReport = useMemo(
+    () => computePeriodReport(profile || {}, transactions, activePeriodKey || null),
+    [profile, transactions, activePeriodKey]
+  );
+  const recentTx = activeReport.transactions.slice(0, 6);
+  const wallets = analytics?.walletSummary?.wallets || profile?.wallets || [];
+  const debtsSummary = analytics?.debtsSummary;
+  const reminders = analytics?.reminders;
+  const surplus = analytics?.surplusSummary;
+  const varAvgs = (analytics?.variableAverages || []).filter((v) => v.total > 0);
+  const varCycles = Math.max(1, ...varAvgs.map((v) => v.monthsObserved || 1));
+
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-fintech-canvas flex flex-col items-center justify-center p-4">
@@ -65,17 +91,6 @@ export default function HomePage() {
       </div>
     );
   }
-
-  const profile = data?.profile;
-  const analytics = data?.analytics;
-  const transactions = data?.transactions || [];
-  const recentTx = transactions.slice(0, 6);
-  const wallets = analytics?.walletSummary?.wallets || profile?.wallets || [];
-  const debtsSummary = analytics?.debtsSummary;
-  const reminders = analytics?.reminders;
-  const surplus = analytics?.surplusSummary;
-  const varAvgs = (analytics?.variableAverages || []).filter((v) => v.total > 0);
-  const varCycles = Math.max(1, ...varAvgs.map((v) => v.monthsObserved || 1));
 
   const displayName = profile?.ownerName || profile?.telegramName || (data?.userId === "1128526190" ? "Alfin" : "Tuan");
   const isConfigured = profile && (profile.monthlyIncome > 0 || wallets.length > 0);
@@ -480,76 +495,147 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* POLA JAM BELANJA */}
-        {analytics?.hourlyStats && (
-          <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                  <Clock className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                    Pola Jam Belanja (Jam Boros)
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    Distribusi waktu pengeluaran harian Tuan siklus ini
-                  </p>
-                </div>
-              </div>
-              {analytics.hourlyStats.peakSlot?.spent > 0 && (
-                <span className="self-start sm:self-auto px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                  🔥 Paling Boros: {analytics.hourlyStats.peakSlot.label} ({analytics.hourlyStats.peakSlot.hours})
-                </span>
-              )}
+        {/* PEMILIH PERIODE SIKLUS + POLA JAM BELANJA */}
+        <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/70">
+            <div>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block">
+                Tampilan Periode Siklus
+              </span>
+              <span className="text-xs font-semibold text-slate-200">
+                {activeReport.period.label} ({activeReport.period.rangeLabel})
+              </span>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
-              {(analytics.hourlyStats.slots || []).map((slot) => {
-                const isPeak = slot.key === analytics.hourlyStats.peakSlot?.key && slot.spent > 0;
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+              {periods.map((p) => {
+                const isActive = p.key === activeReport.period.key;
                 return (
-                  <div
-                    key={slot.key}
-                    className={`p-2.5 rounded-xl border transition ${
-                      isPeak
-                        ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
-                        : "bg-slate-900/60 border-slate-800/80 text-slate-400"
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => setSelectedPeriodKey(p.key)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold shrink-0 transition border flex items-center gap-1.5 ${
+                      isActive
+                        ? "bg-accent-500 text-slate-950 border-accent-400 shadow-sm"
+                        : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700"
                     }`}
                   >
-                    <div className="flex items-center justify-between text-[10px] font-medium mb-1">
-                      <span className={isPeak ? "text-amber-300 font-bold" : "text-slate-300"}>
-                        {slot.label}
+                    <span>{p.shortLabel}</span>
+                    {p.isCurrent && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded-full ${
+                          isActive ? "bg-slate-950/20 text-slate-950" : "bg-emerald-500/15 text-emerald-300"
+                        }`}
+                      >
+                        Aktif
                       </span>
-                      <span>{slot.percent}%</span>
-                    </div>
-                    <div className="text-[9px] text-slate-500 mb-1.5">{slot.hours}</div>
-                    <div className="text-xs font-bold font-mono-num text-slate-100">
-                      {formatRupiah(slot.spent)}
-                    </div>
-                  </div>
+                    )}
+                  </button>
                 );
               })}
+              <Link
+                href={`/laporan?period=${encodeURIComponent(activeReport.period.key)}`}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-semibold shrink-0 bg-purple-500/15 text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 transition flex items-center gap-1"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Laporan &amp; Sheet</span>
+              </Link>
             </div>
-          </section>
-        )}
+          </div>
 
-        {/* TRANSAKSI TERAKHIR */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <Clock className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Pola Jam Belanja (Jam Boros)
+                </h3>
+                <p className="text-[10px] text-slate-500">
+                  Distribusi waktu pengeluaran • {activeReport.period.label} ({activeReport.period.rangeLabel})
+                </p>
+              </div>
+            </div>
+            {activeReport.hourlyStats.peakSlot?.spent > 0 && (
+              <span className="self-start sm:self-auto px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                🔥 Paling Boros: {activeReport.hourlyStats.peakSlot.label} ({activeReport.hourlyStats.peakSlot.hours})
+              </span>
+            )}
+          </div>
+
+          {activeReport.summary.expenseCount === 0 && activeReport.period.isCurrent && periods.length > 1 && (
+            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+              <span>Periode baru baru dimulai (reset tgl {profile?.paydayDate || 25}) — belum ada pengeluaran.</span>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriodKey(periods[1].key)}
+                className="px-2.5 py-1 rounded-lg bg-accent-500/20 text-accent-300 border border-accent-500/30 hover:bg-accent-500/30 font-semibold transition"
+              >
+                Lihat {periods[1].shortLabel} ({periods[1].rangeLabel})
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+            {(activeReport.hourlyStats.slots || []).map((slot) => {
+              const isPeak = slot.key === activeReport.hourlyStats.peakSlot?.key && slot.spent > 0;
+              return (
+                <div
+                  key={slot.key}
+                  className={`p-2.5 rounded-xl border transition ${
+                    isPeak
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
+                      : "bg-slate-900/60 border-slate-800/80 text-slate-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[10px] font-medium mb-1">
+                    <span className={isPeak ? "text-amber-300 font-bold" : "text-slate-300"}>
+                      {slot.label}
+                    </span>
+                    <span>{slot.percent}%</span>
+                  </div>
+                  <div className="text-[9px] text-slate-500 mb-1.5">{slot.hours}</div>
+                  <div className="text-xs font-bold font-mono-num text-slate-100">
+                    {formatRupiah(slot.spent)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* TRANSAKSI PERIODE DIPILIH */}
         <section className="bento-card rounded-2xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Transaksi Terakhir
-            </h3>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Transaksi {activeReport.period.shortLabel}
+              </h3>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                {activeReport.period.rangeLabel} • {activeReport.summary.txCount} transaksi
+              </p>
+            </div>
             <Link
-              href="/riwayat"
-              className="text-xs text-accent-300 hover:text-accent-200 font-medium flex items-center gap-1"
+              href={`/riwayat?period=${encodeURIComponent(activeReport.period.key)}`}
+              className="text-xs text-accent-300 hover:text-accent-200 font-medium flex items-center gap-1 shrink-0"
             >
               Lihat Semua <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           {recentTx.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-500">
-              Belum ada transaksi tercatat. Ketik di bot Telegram atau klik &ldquo;+ Catat&rdquo;.
+            <div className="py-8 text-center text-xs text-slate-500 space-y-2">
+              <p>Belum ada transaksi pada {activeReport.period.label}.</p>
+              {activeReport.period.isCurrent && periods.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPeriodKey(periods[1].key)}
+                  className="text-accent-300 hover:text-accent-200 font-semibold"
+                >
+                  Cek transaksi periode {periods[1].shortLabel} →
+                </button>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-800/60">

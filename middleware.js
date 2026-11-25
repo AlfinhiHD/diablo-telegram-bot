@@ -26,5 +26,5 @@ export function middleware(req) {
 }
 
 export const config = {
-  matcher: ["/", "/tabungan", "/riwayat", "/atur"],
+  matcher: ["/", "/tabungan", "/riwayat", "/laporan", "/atur"],
 };

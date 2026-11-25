@@ -22,6 +22,8 @@ import {
   deleteDebt,
   adjustDebtAmount,
   simplifyDebts,
+  computePeriodReport,
+  buildPeriodCsv,
 } from "@/lib/store";
 import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "@/lib/diablo-ai";
 import { isFirebaseConfigured } from "@/lib/firebase-admin";
@@ -49,7 +51,7 @@ export async function GET(req) {
 
     const [profile, transactions, advisorHistory] = await Promise.all([
       getUserProfile(userId),
-      getTransactions(userId, 300),
+      getTransactions(userId, 500),
       getAdvisorHistory(userId, 30),
     ]);
 
@@ -61,7 +63,24 @@ export async function GET(req) {
       profile.ownerName = profile.telegramName;
     }
 
+    const periodParam = req.nextUrl.searchParams.get("period") || "";
+    const exportFmt = req.nextUrl.searchParams.get("export") || "";
+
+    if (exportFmt === "csv") {
+      const report = computePeriodReport(profile, transactions, periodParam || null);
+      const csv = buildPeriodCsv(report);
+      return new NextResponse(csv, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="diablo-laporan-${report.period.key}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const analytics = computeAnalytics(profile, transactions);
+    const periodReport = periodParam ? computePeriodReport(profile, transactions, periodParam) : null;
 
     const systemStatus = {
       isFirebase: isFirebaseConfigured(),
@@ -75,6 +94,8 @@ export async function GET(req) {
       transactions,
       advisorHistory,
       analytics,
+      periods: analytics.periods || [],
+      ...(periodReport ? { periodReport } : {}),
       systemStatus,
     });
   } catch (err) {

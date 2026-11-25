@@ -64,6 +64,12 @@ test.describe("Diablo Finance E2E Testing", () => {
     await expect(page).toHaveURL("/riwayat");
     await expect(page.locator("h1")).toContainText("Riwayat Transaksi");
 
+    // Laporan
+    await page.locator("nav a[href='/laporan']").locator("visible=true").first().click();
+    await expect(page).toHaveURL("/laporan");
+    await expect(page.locator("h1")).toContainText("Laporan Periode");
+    await expect(page.locator("a:has-text('Download Sheet')")).toBeVisible();
+
     // Atur
     await page.locator("nav a[href='/atur']").locator("visible=true").first().click();
     await expect(page).toHaveURL("/atur");

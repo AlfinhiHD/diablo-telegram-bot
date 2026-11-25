@@ -5,8 +5,13 @@ import {
   saveUserProfile,
   getTransactions,
   computeAnalytics,
+  createLoginToken,
+  getPreviousPeriodKey,
+  computePeriodReport,
+  buildPeriodTelegramReport,
 } from "@/lib/store";
 import { buildReminderTelegramMessage } from "@/lib/reminders-tg";
+import { appUrl } from "@/lib/auth";
 import { getConfig } from "@/lib/bundled-config";
 
 async function sendTg(chatId, text, replyMarkup = null) {
@@ -42,24 +47,50 @@ export async function GET(req) {
 
   try {
     const force = req.nextUrl.searchParams.get("force") === "1";
+    const typeParam = req.nextUrl.searchParams.get("type") || "";
     const userIds = await listAllUserIds();
     const results = [];
 
     for (const uid of userIds) {
       const [profile, transactions] = await Promise.all([
         getUserProfile(uid),
-        getTransactions(uid, 200),
+        getTransactions(uid, 500),
       ]);
       const analytics = computeAnalytics(profile, transactions);
       const rem = analytics.reminders;
 
+      // 1. Laporan Penutupan Siklus Bulanan otomatis setiap tanggal gajian (tgl 25 pagi 08:00 WIB)
+      let cycleReportSent = false;
+      const prevPeriodKey = getPreviousPeriodKey(analytics.currentPeriod.key);
+      const shouldSendCycleReport =
+        (rem.isPayday && profile.lastCycleReportPeriod !== prevPeriodKey) ||
+        (force && typeParam === "report");
+
+      if (shouldSendCycleReport) {
+        const prevReport = computePeriodReport(profile, transactions, prevPeriodKey);
+        if (prevReport.summary.txCount > 0 || force) {
+          const token = await createLoginToken(uid);
+          const reportUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent(`/laporan?period=${prevPeriodKey}`)}`;
+          const { text, replyMarkup } = buildPeriodTelegramReport(profile, prevReport, reportUrl);
+          cycleReportSent = await sendTg(uid, text, replyMarkup);
+          if (cycleReportSent) {
+            await saveUserProfile(uid, { lastCycleReportPeriod: prevPeriodKey });
+          }
+        }
+      }
+
+      if (typeParam === "report") {
+        results.push({ uid, cycleReportSent, period: prevPeriodKey });
+        continue;
+      }
+
       if (!force && profile.lastReminderDate === rem.todayKey) {
-        results.push({ uid, skipped: "already_sent_today" });
+        results.push({ uid, cycleReportSent, skipped: "already_sent_today" });
         continue;
       }
 
       if (!force && !rem.hasUrgentCronAction) {
-        results.push({ uid, skipped: "no_urgent_reminders" });
+        results.push({ uid, cycleReportSent, skipped: "no_urgent_reminders" });
         continue;
       }
 
@@ -68,7 +99,7 @@ export async function GET(req) {
       });
 
       if (!hasContent) {
-        results.push({ uid, skipped: "empty" });
+        results.push({ uid, cycleReportSent, skipped: "empty" });
         continue;
       }
 
@@ -76,7 +107,7 @@ export async function GET(req) {
       if (sent) {
         await saveUserProfile(uid, { lastReminderDate: rem.todayKey });
       }
-      results.push({ uid, sent });
+      results.push({ uid, cycleReportSent, sent });
     }
 
     return NextResponse.json({ ok: true, results });

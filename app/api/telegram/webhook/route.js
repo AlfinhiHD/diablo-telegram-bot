@@ -29,6 +29,9 @@ import {
   findOpenDebt,
   updateDebt,
   snoozeDebt,
+  computePeriodReport,
+  getPreviousPeriodKey,
+  buildPeriodTelegramReport,
 } from "../../../../lib/store.js";
 import {
   analyzeUserMessage,
@@ -63,6 +66,7 @@ async function ensureBotCommands(token) {
           { command: "reminder", description: "🔔 Tagihan jatuh tempo & utang macet" },
           { command: "utang", description: "🧾 Cek catatan utang & piutang" },
           { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
+          { command: "laporan", description: "📑 Laporan periode bulanan & sheet" },
           { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
           { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
           { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
@@ -1524,6 +1528,35 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, mode: "audit_guide" });
     }
 
+    // Command: /laporan (laporan siklus bulanan + link halaman /laporan & sheet)
+    const isLaporanRequest =
+      text === "/laporan" ||
+      text.startsWith("/laporan@") ||
+      text === "/report" ||
+      text.startsWith("/report@") ||
+      lower === "laporan" ||
+      lower === "laporan bulanan" ||
+      lower === "report bulanan" ||
+      lower === "laporan periode" ||
+      lower === "report sheet" ||
+      lower === "rekap bulanan";
+
+    if (isLaporanRequest) {
+      let report = computePeriodReport(profile, transactions);
+      if (report.summary.txCount === 0) {
+        const prevKey = getPreviousPeriodKey(report.period.key);
+        const prevReport = computePeriodReport(profile, transactions, prevKey);
+        if (prevReport.summary.txCount > 0) {
+          report = prevReport;
+        }
+      }
+      const token = await createLoginToken(userId);
+      const reportUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent(`/laporan?period=${report.period.key}`)}`;
+      const { text: reportText, replyMarkup } = buildPeriodTelegramReport(profile, report, reportUrl);
+      await sendTelegramMessage(chatId, reportText, threadId, replyMarkup);
+      return NextResponse.json({ ok: true, mode: "period_report", period: report.period.key });
+    }
+
     // Command: /rekap
     const isRekapRequest =
       text === "/rekap" ||
@@ -1531,7 +1564,6 @@ export async function POST(req) {
       lower === "rekap" ||
       lower === "rekap dong" ||
       lower === "cek rekap" ||
-      lower === "laporan" ||
       lower === "status keuangan";
 
     if (isRekapRequest) {
@@ -1570,7 +1602,6 @@ export async function POST(req) {
       text === "/analisis" ||
       text.startsWith("/analisis@") ||
       text === "/analysis" ||
-      text === "/report" ||
       lower === "analisis" ||
       lower.includes("analisis ku") ||
       lower.includes("analisis dong") ||

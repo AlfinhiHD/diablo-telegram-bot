@@ -1,20 +1,24 @@
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, groupTransactionsByDate } from "@/lib/format";
-import { Search, Trash2, ReceiptText, Wallet } from "lucide-react";
+import { listAvailablePeriods, getCycleBounds } from "@/lib/period-report";
+import { Search, Trash2, ReceiptText, Wallet, Calendar, BarChart3 } from "lucide-react";
 
 function RiwayatContent() {
   const searchParams = useSearchParams();
   const initialWallet = searchParams.get("wallet") || "ALL";
+  const initialPeriod = searchParams.get("period") || "";
 
   const { data, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [filterWallet, setFilterWallet] = useState(initialWallet);
+  const [filterPeriod, setFilterPeriod] = useState(initialPeriod);
   const [filterIntent, setFilterIntent] = useState("ALL"); // ALL, INCOME, NEED, WANT, GIFT, ASSET
   const [searchQuery, setSearchQuery] = useState("");
   const [movingTxId, setMovingTxId] = useState(null);
@@ -22,6 +26,8 @@ function RiwayatContent() {
   useEffect(() => {
     const qW = searchParams.get("wallet");
     if (qW) setFilterWallet(qW);
+    const qP = searchParams.get("period");
+    if (qP) setFilterPeriod(qP);
   }, [searchParams]);
 
   async function handleToggleIntent(txId) {
@@ -70,9 +76,34 @@ function RiwayatContent() {
 
   const transactions = data?.transactions || [];
   const wallets = data?.profile?.wallets || [];
+  const paydayDate = data?.profile?.paydayDate || 25;
+
+  const periods = useMemo(
+    () => listAvailablePeriods(transactions, paydayDate),
+    [transactions, paydayDate]
+  );
+
+  const activePeriodKey =
+    filterPeriod === "ALL"
+      ? "ALL"
+      : filterPeriod && periods.some((p) => p.key === filterPeriod)
+      ? filterPeriod
+      : periods[0]?.key || "ALL";
+
+  const activePeriodObj =
+    activePeriodKey !== "ALL" ? periods.find((p) => p.key === activePeriodKey) || null : null;
+
+  const periodTransactions = useMemo(() => {
+    if (activePeriodKey === "ALL") return transactions;
+    const bounds = getCycleBounds(activePeriodKey, paydayDate);
+    return transactions.filter((t) => {
+      const d = new Date(t.createdAt);
+      return !isNaN(d.getTime()) && d >= bounds.start && d < bounds.end;
+    });
+  }, [transactions, activePeriodKey, paydayDate]);
 
   const filtered = useMemo(() => {
-    return transactions.filter((t) => {
+    return periodTransactions.filter((t) => {
       const matchesWallet = filterWallet === "ALL" || t.walletId === filterWallet;
       const isIncome = t.type === "income";
       const matchesIntent =
@@ -85,7 +116,7 @@ function RiwayatContent() {
         (t.walletName || "").toLowerCase().includes(searchQuery.toLowerCase());
       return matchesWallet && matchesIntent && matchesSearch;
     });
-  }, [transactions, filterWallet, filterIntent, searchQuery]);
+  }, [periodTransactions, filterWallet, filterIntent, searchQuery]);
 
   const grouped = useMemo(() => groupTransactionsByDate(filtered), [filtered]);
 
@@ -115,8 +146,10 @@ function RiwayatContent() {
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
               {selectedWalletObj
-                ? `Riwayat khusus dana ${selectedWalletObj.name} • Saldo saat ini ${formatRupiah(selectedWalletObj.balance)}`
-                : "Riwayat terpisah per sumber dana, pengeluaran, dan pemasukan Tuan"}
+                ? `Dana ${selectedWalletObj.name} • Saldo saat ini ${formatRupiah(selectedWalletObj.balance)}`
+                : activePeriodObj
+                ? `${activePeriodObj.label} (${activePeriodObj.rangeLabel})`
+                : "Semua periode siklus • Terpisah per sumber dana"}
             </p>
           </div>
 
@@ -138,6 +171,54 @@ function RiwayatContent() {
           </div>
         </div>
 
+        {/* PERIODE SIKLUS TABS: Pisahkan data antar bulan gajian */}
+        <section className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {periods.map((p) => {
+              const active = activePeriodKey === p.key;
+              return (
+                <button
+                  key={p.key}
+                  onClick={() => setFilterPeriod(p.key)}
+                  title={p.rangeLabel}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition border flex items-center gap-1.5 ${
+                    active
+                      ? "bg-purple-500/25 text-purple-200 border-purple-400/50 shadow-sm"
+                      : "bg-slate-900/80 text-slate-300 border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>{p.shortLabel}</span>
+                  <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">
+                    ({p.rangeLabel.replace(/\s*\d{4}$/, "")})
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${active ? "bg-purple-950/60 text-purple-200" : "bg-slate-800 text-slate-400"}`}>
+                    {p.txCount}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setFilterPeriod("ALL")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition border ${
+                activePeriodKey === "ALL"
+                  ? "bg-purple-500/25 text-purple-200 border-purple-400/50 shadow-sm"
+                  : "bg-slate-900/80 text-slate-400 border-slate-800 hover:border-slate-700"
+              }`}
+            >
+              Semua Periode ({transactions.length})
+            </button>
+          </div>
+
+          <Link
+            href={activePeriodKey !== "ALL" ? `/laporan?period=${encodeURIComponent(activePeriodKey)}` : "/laporan"}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-accent-500/15 text-accent-300 border border-accent-500/30 hover:bg-accent-500/25 transition flex items-center gap-1.5 shrink-0"
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Laporan &amp; Sheet</span>
+          </Link>
+        </section>
+
         {/* WALLET TABS: History Terpisah per Sumber Dana */}
         {wallets.length > 0 && (
           <section className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -152,11 +233,11 @@ function RiwayatContent() {
               <Wallet className="w-3.5 h-3.5" />
               <span>Semua Dana</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${filterWallet === "ALL" ? "bg-slate-950/20" : "bg-slate-800 text-slate-400"}`}>
-                {transactions.length}
+                {periodTransactions.length}
               </span>
             </button>
             {wallets.map((w) => {
-              const count = transactions.filter((t) => t.walletId === w.id).length;
+              const count = periodTransactions.filter((t) => t.walletId === w.id).length;
               const active = filterWallet === w.id;
               return (
                 <button

@@ -18,7 +18,11 @@ export async function GET(req) {
   const sessionValue = signSession(telegramUserId);
   const profile = await getUserProfile(telegramUserId);
 
-  const targetPath = profile && profile.monthlyIncome > 0 ? "/" : "/atur?first=1";
+  const rawNext = searchParams.get("next") || "";
+  const safeNext =
+    rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.includes("://") ? rawNext : "";
+
+  const targetPath = safeNext || (profile && profile.monthlyIncome > 0 ? "/" : "/atur?first=1");
   const res = NextResponse.redirect(new URL(targetPath, req.url));
 
   res.cookies.set(SESSION_COOKIE, sessionValue, {
