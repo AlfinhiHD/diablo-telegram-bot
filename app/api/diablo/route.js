@@ -20,6 +20,8 @@ import {
   updateDebt,
   snoozeDebt,
   deleteDebt,
+  adjustDebtAmount,
+  simplifyDebts,
 } from "@/lib/store";
 import { parseExpenseMessage, parseReceiptImage, askFinancialAdvisor } from "@/lib/diablo-ai";
 import { isFirebaseConfigured } from "@/lib/firebase-admin";
@@ -161,6 +163,20 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, ...result });
     }
 
+    if (action === "simplify_debts") {
+      const result = await simplifyDebts(userId);
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "adjust_debt") {
+      const result = await adjustDebtAmount(userId, body.debtId, {
+        delta: body.delta,
+        reason: body.reason || "",
+      });
+      if (!result) return NextResponse.json({ error: "Catatan utang/piutang tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
     if (action === "settle_debt") {
       const profile = await getUserProfile(userId);
       const debt = (profile.debts || []).find((d) => d.id === body.debtId);
@@ -169,14 +185,25 @@ export async function POST(req) {
         return NextResponse.json({ error: "Catatan ini sudah dilunasi" }, { status: 400 });
       }
 
-      const finalAmount = Number(body.amount) > 0 ? Number(body.amount) : Number(debt.amount) || 0;
+      const prevAmount = Number(debt.amount) || 0;
+      const finalAmount = Number(body.amount) > 0 ? Number(body.amount) : prevAmount;
       const wallet = body.walletId ? resolveWallet(profile, body.walletId) : null;
+      const isPartial = prevAmount > 0 && finalAmount > 0 && finalAmount < prevAmount;
 
-      await updateDebt(userId, debt.id, {
-        status: "paid",
-        ...(finalAmount > 0 ? { amount: finalAmount } : {}),
-        ...(wallet ? { targetWalletId: wallet.id } : {}),
-      });
+      if (isPartial) {
+        const remaining = prevAmount - finalAmount;
+        const stepNote = `− Bayar Rp ${Math.round(finalAmount).toLocaleString("id-ID")}`;
+        const nextNote = debt.note
+          ? `${debt.note} ${stepNote}`
+          : `Rp ${Math.round(prevAmount).toLocaleString("id-ID")} ${stepNote}`;
+        await updateDebt(userId, debt.id, { amount: remaining, note: nextNote });
+      } else {
+        await updateDebt(userId, debt.id, {
+          status: "paid",
+          ...(finalAmount > 0 ? { amount: finalAmount } : {}),
+          ...(wallet ? { targetWalletId: wallet.id } : {}),
+        });
+      }
 
       let tx = null;
       if (finalAmount > 0 && wallet) {
@@ -184,7 +211,13 @@ export async function POST(req) {
         tx = await addTransaction(userId, {
           type: isPiutang ? "income" : "expense",
           amount: finalAmount,
-          item: isPiutang ? `Pelunasan piutang ${debt.person}` : `Bayar utang ${debt.person}`,
+          item: isPartial
+            ? isPiutang
+              ? `Cicil piutang ${debt.person}`
+              : `Cicil utang ${debt.person}`
+            : isPiutang
+            ? `Pelunasan piutang ${debt.person}`
+            : `Bayar utang ${debt.person}`,
           category: isPiutang ? "Pemasukan" : "Tagihan",
           intent: isPiutang ? "INCOME" : "NEED",
           walletId: wallet.id,
@@ -195,7 +228,7 @@ export async function POST(req) {
         });
       }
 
-      return NextResponse.json({ ok: true, transaction: tx });
+      return NextResponse.json({ ok: true, partial: isPartial, transaction: tx });
     }
 
     if (action === "delete_debt") {

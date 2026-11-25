@@ -75,6 +75,7 @@ export default function HomePage() {
   const reminders = analytics?.reminders;
   const surplus = analytics?.surplusSummary;
   const varAvgs = (analytics?.variableAverages || []).filter((v) => v.total > 0);
+  const varCycles = Math.max(1, ...varAvgs.map((v) => v.monthsObserved || 1));
 
   const displayName = profile?.ownerName || profile?.telegramName || (data?.userId === "1128526190" ? "Alfin" : "Tuan");
   const isConfigured = profile && (profile.monthlyIncome > 0 || wallets.length > 0);
@@ -458,7 +459,7 @@ export default function HomePage() {
                   Rata-Rata Rutin Variabel (Keseharian)
                 </h3>
                 <p className="text-[10px] text-slate-500">
-                  Estimasi bulanan untuk kuota, pulsa, bensin, listrik & laundry ({varAvgs[0]?.monthsObserved || 1} bln data)
+                  Estimasi per siklus untuk kuota, pulsa, bensin, listrik &amp; laundry ({varCycles} siklus data)
                 </p>
               </div>
               <Wallet className="w-4 h-4 text-slate-500" />
@@ -470,7 +471,9 @@ export default function HomePage() {
                   <div className="text-sm font-bold font-mono text-slate-100 mt-1">
                     {formatRupiah(v.avgMonthly)}<span className="text-[10px] text-slate-500 font-normal">/bln</span>
                   </div>
-                  <div className="text-[9px] text-slate-500 mt-0.5">{v.count}x tercatat</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">
+                    Total {formatRupiah(v.total)} • {v.count}x
+                  </div>
                 </div>
               ))}
             </div>
