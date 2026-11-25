@@ -29,6 +29,9 @@ import {
   findOpenDebt,
   updateDebt,
   snoozeDebt,
+  addWishlist,
+  findOpenWishlist,
+  buyWishlist,
   computePeriodReport,
   getPreviousPeriodKey,
   buildPeriodTelegramReport,
@@ -40,10 +43,11 @@ import {
   parseNaturalDate,
   hasTimeHint,
   applyTimeReplyToPendingItems,
+  detectExplicitWalletId,
 } from "../../../../lib/diablo-ai.js";
 import { buildReminderTelegramMessage } from "../../../../lib/reminders-tg.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
-import { formatRupiah, toWibParts, fromWib, startOfWibDay } from "../../../../lib/format.js";
+import { formatRupiah, toWibParts, fromWib, startOfWibDay, parseAmount } from "../../../../lib/format.js";
 import { getConfig } from "../../../../lib/bundled-config.js";
 
 export const maxDuration = 30;
@@ -67,6 +71,9 @@ async function ensureBotCommands(token) {
           { command: "utang", description: "🧾 Cek catatan utang & piutang" },
           { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
           { command: "laporan", description: "📑 Laporan periode bulanan & sheet" },
+          { command: "wishlist", description: "🛍️ Daftar, tambah & beli wishlist" },
+          { command: "set_advisor", description: "🧠 Set room: Advisor, Wishlist & Reminder" },
+          { command: "set_rekap", description: "📝 Set room: Catat & Rekap Transaksi" },
           { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
           { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
           { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
@@ -591,6 +598,37 @@ function buildDebtsListText(profile) {
   text += `\n\n⚖️ *Net (Piutang − Utang):* *${net >= 0 ? "+" : ""}${formatRupiah(net)}*`;
   text += `\n\n_Tips: Ketik natural untuk lunas, misal \`andani udah bayar 74.33k masuk bni\` atau \`bayar utang sup kalduara 57k pake cash\`._`;
   return text;
+}
+
+function buildWishlistText(profile) {
+  const all = profile?.wishlists || [];
+  const planned = all.filter((w) => w.status !== "bought");
+  const boughtCount = all.filter((w) => w.status === "bought").length;
+
+  if (planned.length === 0) {
+    return (
+      `🛍️ *Wishlist Belanja Tuan*\n\n` +
+      `Belum ada wishlist aktif saat ini.${boughtCount > 0 ? ` _(${boughtCount} item sudah dibeli)_` : ""}\n\n` +
+      `_Tambah via chat: \`tambah wishlist Huawei Watch Fit 5 1.74jt https://...\`_`
+    );
+  }
+
+  const total = planned.reduce((a, w) => a + (Number(w.price) || 0), 0);
+  const prioIcon = (p) => (p === "high" ? "🔥 " : p === "low" ? "🌱 " : "");
+  const lines = planned.map((w, idx) => {
+    const priceStr = w.price > 0 ? `*${formatRupiah(w.price)}*` : "_harga belum diisi_";
+    const savedStr = w.saved > 0 ? ` • terkumpul ${formatRupiah(w.saved)}` : "";
+    const linkStr = w.url && /^https?:\/\//i.test(w.url) ? ` — [Link](${w.url})` : "";
+    return `${idx + 1}. ${prioIcon(w.priority)}*${w.name}*: ${priceStr}${savedStr}${linkStr}`;
+  });
+
+  return (
+    `🛍️ *Wishlist Belanja Tuan (${planned.length})*\n\n` +
+    `${lines.join("\n")}\n\n` +
+    `• Total Estimasi: *${formatRupiah(total)}*` +
+    (boughtCount > 0 ? `\n• Sudah Dibeli: *${boughtCount} item*` : "") +
+    `\n\n_Tips: Ketik \`tambah wishlist <nama> <harga> <link>\` atau \`beli wishlist <nama>\`._`
+  );
 }
 
 function buildWalletHistoryText(wallet, transactions = []) {
@@ -1135,6 +1173,37 @@ export async function POST(req) {
         return NextResponse.json({ ok: true, mode: "split_ignored" });
       }
 
+      // 11. Wishlist Purchase Callback (buy_wish:<wishId>:<walletIdOrNone> / buy_wish:cancel)
+      if (data.startsWith("buy_wish:")) {
+        const parts = data.split(":");
+        const wishId = parts[1] || "";
+        const walletIdOrNone = parts[2] || "";
+        if (wishId === "cancel") {
+          await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+          await answerCallbackQuery(cbId, "Pembelian wishlist dibatalkan");
+          return NextResponse.json({ ok: true, mode: "buy_wish_cancelled" });
+        }
+        const isNoLog = walletIdOrNone === "none" || !walletIdOrNone;
+        const res = await buyWishlist(cbUserId, wishId, {
+          walletId: isNoLog ? "" : walletIdOrNone,
+          logTx: !isNoLog,
+        });
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+        if (!res) {
+          await answerCallbackQuery(cbId, "Item wishlist tidak ditemukan");
+          return NextResponse.json({ ok: true });
+        }
+        await answerCallbackQuery(cbId, `Wishlist ${res.item.name} ditandai dibeli!`);
+        const w = !isNoLog ? res.profile?.wallets?.find((x) => x.id === walletIdOrNone) : null;
+        await sendTelegramMessage(
+          cbChatId,
+          `🛍️ *Wishlist Terbeli!*\n• Item: *${res.item.name}*\n• Nominal: *${formatRupiah(res.payAmount)}*` +
+            (w ? `\n• Sumber Dana: ${walletEmoji(w)} *${w.name}* → Sisa *${formatRupiah(w.balance)}*` : `\n• _(Ditandai dibeli tanpa potong saldo dompet)_`),
+          cbThreadId
+        );
+        return NextResponse.json({ ok: true, mode: "wishlist_bought", wishId });
+      }
+
       await answerCallbackQuery(cbId);
       return NextResponse.json({ ok: true });
     }
@@ -1239,6 +1308,79 @@ export async function POST(req) {
         telegramName: profile.telegramName || tgName,
         telegramUsername: profile.telegramUsername || tgUsername || (userId === "1128526190" ? "nocelestial14" : ""),
       }).catch(() => {});
+    }
+
+    const ch = profile?.telegramChannels || {};
+    const isBoundGroup = Boolean(ch.groupChatId && String(chatId) === String(ch.groupChatId));
+    const threadKey = threadId ? String(threadId) : "";
+    const isAdvisorRoom = Boolean(isBoundGroup && ch.advisorThreadId && threadKey === String(ch.advisorThreadId));
+    const isLoggerRoom = Boolean(isBoundGroup && ch.loggerThreadId && threadKey === String(ch.loggerThreadId));
+
+    // Room Binding Commands: /set_advisor, /set_rekap, /rooms
+    if (
+      text === "/set_advisor" ||
+      text.startsWith("/set_advisor@") ||
+      text === "/set_reminder" ||
+      text.startsWith("/set_reminder@")
+    ) {
+      const nextCh = {
+        ...ch,
+        groupChatId: String(chatId),
+        advisorThreadId: threadKey,
+      };
+      await saveUserProfile(userId, { telegramChannels: nextCh });
+      await sendTelegramMessage(
+        chatId,
+        `🧠 *Room Advisor, Wishlist & Reminder Aktif!*\n` +
+          `• Group ID: \`${chatId}\`\n` +
+          `• Topic ID: \`${threadKey || "General"}\`\n\n` +
+          `Di room ini Tuan bebas:\n` +
+          `• Tanya *wise/aman ga beli X?* (tanpa takut salah tercatat jadi pengeluaran)\n` +
+          `• Tambah/cek/beli *wishlist* (mis. \`tambah wishlist mouse 400k https://...\`)\n` +
+          `• Terima *reminder tagihan/utang pagi* & *laporan bulanan tgl 25 pagi* otomatis.`,
+        threadId
+      );
+      return NextResponse.json({ ok: true, mode: "set_advisor_room" });
+    }
+
+    if (
+      text === "/set_rekap" ||
+      text.startsWith("/set_rekap@") ||
+      text === "/set_catat" ||
+      text.startsWith("/set_catat@") ||
+      text === "/set_pelaporan" ||
+      text.startsWith("/set_pelaporan@")
+    ) {
+      const nextCh = {
+        ...ch,
+        groupChatId: String(chatId),
+        loggerThreadId: threadKey,
+      };
+      await saveUserProfile(userId, { telegramChannels: nextCh });
+      await sendTelegramMessage(
+        chatId,
+        `📝 *Room Catat & Rekap Aktif!*\n` +
+          `• Group ID: \`${chatId}\`\n` +
+          `• Topic ID: \`${threadKey || "General"}\`\n\n` +
+          `Gunakan room ini untuk:\n` +
+          `• Catat pengeluaran/pemasukan harian & foto struk\n` +
+          `• Transfer antar dompet, audit saldo, `/saldo`, `/rekap`, `/laporan`.`,
+        threadId
+      );
+      return NextResponse.json({ ok: true, mode: "set_logger_room" });
+    }
+
+    if (text === "/rooms" || text.startsWith("/rooms@") || text === "/room" || text.startsWith("/room@")) {
+      await sendTelegramMessage(
+        chatId,
+        `💬 *Konfigurasi 2 Chatroom Diablo*\n` +
+          `• Group ID: \`${ch.groupChatId || "Belum di-set"}\`\n` +
+          `• Room Advisor & Reminder Topic: \`${ch.advisorThreadId || (ch.groupChatId ? "General" : "-")}\`\n` +
+          `• Room Catat & Rekap Topic: \`${ch.loggerThreadId || (ch.groupChatId ? "General" : "-")}\`\n\n` +
+          `_Kirim \`/set_advisor\` di Topic Advisor dan \`/set_rekap\` di Topic Catat & Rekap._`,
+        threadId
+      );
+      return NextResponse.json({ ok: true, mode: "show_rooms" });
     }
 
     // Command: /start atau /help
@@ -1645,6 +1787,137 @@ export async function POST(req) {
         inline_keyboard: [[{ text: "🔑 Buka Web Dashboard Lengkap", url: loginUrl }]],
       });
       return NextResponse.json({ ok: true, mode: "fast_analysis_query" });
+    }
+
+    // Command & Natural Trigger: Wishlist (/wishlist, tambah wishlist, beli wishlist)
+    const isWishlistView =
+      text === "/wishlist" ||
+      /^\/wishlist@\S+$/i.test(text) ||
+      lower === "wishlist" ||
+      lower === "cek wishlist" ||
+      lower === "daftar wishlist" ||
+      lower === "list wishlist" ||
+      lower === "lihat wishlist";
+
+    const addWishMatch = text.match(
+      /^(?:\/wishlist(?:@\S+)?\s+(?:tambah|add)|(?:tambah|masukin|masuk|catat|add|simpan)(?:kan)?(?:\s+ke)?\s+wishlist)\s+(.+)$/is
+    );
+    const buyWishMatch = text.match(
+      /^(?:\/wishlist(?:@\S+)?\s+beli|beli\s+wishlist|udah\s+beli\s+wishlist|wishlist\s+(.+?)\s+(?:udah\s+)?dibeli)(?:\s+(.+))?$/i
+    );
+
+    if (isWishlistView) {
+      const token = await createLoginToken(userId);
+      const wishUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent("/tabungan#wishlist")}`;
+      await sendTelegramMessage(chatId, buildWishlistText(profile), threadId, {
+        inline_keyboard: [[{ text: "🛍️ Kelola Wishlist di Web", url: wishUrl }]],
+      });
+      return NextResponse.json({ ok: true, mode: "wishlist_view" });
+    }
+
+    if (addWishMatch) {
+      const rawBody = addWishMatch[1].trim();
+      const urlMatch = rawBody.match(/https?:\/\/[^\s)]+/i);
+      const url = urlMatch ? urlMatch[0] : "";
+      const withoutUrl = rawBody.replace(/https?:\/\/[^\s)]+/gi, " ").trim();
+      const price = parseAmount(withoutUrl);
+      const cleanName = withoutUrl
+        .replace(/(?:rp\.?\s*)?\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)\b/gi, " ")
+        .replace(/(?:rp\.?\s*)?\b\d{1,3}(?:[.,]\d{3})+\b/gi, " ")
+        .replace(/(?:rp\.?\s*)?\b\d{4,12}\b/gi, " ")
+        .replace(/[=()]/g, " ")
+        .replace(/\b(?:harga|harganya|seharga|senilai|rp)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!cleanName) {
+        await sendTelegramMessage(
+          chatId,
+          `Format tambah wishlist:\n\`tambah wishlist Huawei Watch Fit 5 1.74jt https://...\``,
+          threadId
+        );
+        return NextResponse.json({ ok: true, mode: "wishlist_add_invalid" });
+      }
+
+      const { item } = await addWishlist(userId, { name: cleanName, price, url });
+      await sendTelegramMessage(
+        chatId,
+        `🛍️ *Wishlist Ditambahkan!*\n` +
+          `• Item: *${item.name}*\n` +
+          `• Estimasi Harga: *${item.price > 0 ? formatRupiah(item.price) : "Belum diisi"}*` +
+          (item.url ? `\n• Link: ${item.url}` : ""),
+        threadId
+      );
+      return NextResponse.json({ ok: true, mode: "wishlist_added", wishId: item.id });
+    }
+
+    if (buyWishMatch) {
+      const queryPart = (buyWishMatch[1] || buyWishMatch[2] || "").trim();
+      const explicitWalletId = detectExplicitWalletId(queryPart, profile.wallets || [], { role: "source" });
+      const cleanQuery = queryPart
+        .replace(/\b(?:pake|pakai|via|dari|dengan)\s+(?:bank\s+saqu|saqu|bni|wondr|cash|tunai|shopeepay|spaylater|paylater)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const matched = findOpenWishlist(profile, cleanQuery);
+      if (!matched) {
+        await sendTelegramMessage(
+          chatId,
+          `Item wishlist "${cleanQuery || queryPart}" tidak ditemukan.\n\n${buildWishlistText(profile)}`,
+          threadId
+        );
+        return NextResponse.json({ ok: true, mode: "wishlist_not_found" });
+      }
+
+      if (explicitWalletId) {
+        const res = await buyWishlist(userId, matched.id, { walletId: explicitWalletId, logTx: true });
+        const w = res?.profile?.wallets?.find((x) => x.id === explicitWalletId);
+        await sendTelegramMessage(
+          chatId,
+          `🛍️ *Wishlist Terbeli!*\n• Item: *${res.item.name}*\n• Nominal: *${formatRupiah(res.payAmount)}*` +
+            (w ? `\n• Sumber Dana: ${walletEmoji(w)} *${w.name}* → Sisa *${formatRupiah(w.balance)}*` : ""),
+          threadId
+        );
+        return NextResponse.json({ ok: true, mode: "wishlist_bought_direct", wishId: matched.id });
+      }
+
+      const unlocked = (profile.wallets || []).filter((w) => !w.locked);
+      const rows = [];
+      for (let i = 0; i < unlocked.length; i += 2) {
+        rows.push(
+          unlocked.slice(i, i + 2).map((w) => ({
+            text: `${walletEmoji(w)} ${w.name}`,
+            callback_data: `buy_wish:${matched.id}:${w.id}`,
+          }))
+        );
+      }
+      rows.push([{ text: "✅ Tandai Dibeli (Tanpa Potong Saldo)", callback_data: `buy_wish:${matched.id}:none` }]);
+      rows.push([{ text: "❌ Batal", callback_data: "buy_wish:cancel" }]);
+
+      await sendTelegramMessage(
+        chatId,
+        `🛍️ *Beli Wishlist: ${matched.name}* (${formatRupiah(matched.price)})\nPilih sumber dana untuk mencatat pengeluarannya:`,
+        threadId,
+        { inline_keyboard: rows }
+      );
+      return NextResponse.json({ ok: true, mode: "wishlist_buy_pick_wallet", wishId: matched.id });
+    }
+
+    // Room Advisor & Reminder: semua chat bebas langsung ditangani AI Advisor (tanpa salah catat transaksi!)
+    if (isAdvisorRoom) {
+      if (photos && photos.length > 0) {
+        await sendTelegramMessage(
+          chatId,
+          `Tuan sedang berada di Room *Advisor, Wishlist & Reminder*.\nUntuk catat struk atau mutasi, silakan kirim fotonya di Room *Catat & Rekap* ya Tuan.`,
+          threadId
+        );
+        return NextResponse.json({ ok: true, mode: "advisor_room_photo_hint" });
+      }
+      const cleanQuestion = text.replace(/^\/(?:tanya|ask|advisor)\s*/i, "").trim();
+      const advResult = await askFinancialAdvisor(cleanQuestion, profile, analytics, transactions);
+      await addAdvisorHistory(userId, { question: cleanQuestion, reply: advResult.reply, verdict: advResult.verdict });
+      await sendTelegramMessage(chatId, advResult.reply, threadId);
+      return NextResponse.json({ ok: true, mode: "advisor_room" });
     }
 
     // Foto Struk / QRIS / Mutasi

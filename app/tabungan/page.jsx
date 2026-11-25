@@ -23,6 +23,8 @@ import {
   Clock,
   CreditCard,
   Pencil,
+  ShoppingBag,
+  ExternalLink,
 } from "lucide-react";
 
 export default function TabunganPage() {
@@ -74,10 +76,31 @@ export default function TabunganPage() {
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
 
+  // Wishlist Belanja
+  const [wishlistTab, setWishlistTab] = useState("planned"); // "planned" | "bought"
+  const [wishModalOpen, setWishModalOpen] = useState(false);
+  const [editingWish, setEditingWish] = useState(null);
+  const [wishName, setWishName] = useState("");
+  const [wishPrice, setWishPrice] = useState("");
+  const [wishSaved, setWishSaved] = useState("");
+  const [wishUrl, setWishUrl] = useState("");
+  const [wishPriority, setWishPriority] = useState("medium");
+  const [wishNote, setWishNote] = useState("");
+  const [buyWishTarget, setBuyWishTarget] = useState(null);
+  const [buyWishWalletId, setBuyWishWalletId] = useState("bni");
+  const [buyWishAmount, setBuyWishAmount] = useState("");
+  const [buyWishLogTx, setBuyWishLogTx] = useState(true);
+
   const [actionLoading, setActionLoading] = useState(false);
 
   const wallets = data?.profile?.wallets || [];
   const pots = data?.profile?.savingsPots || [];
+  const wishlists = data?.profile?.wishlists || [];
+  const plannedWishlists = wishlists.filter((w) => w.status !== "bought");
+  const boughtWishlists = wishlists
+    .filter((w) => w.status === "bought")
+    .sort((a, b) => new Date(b.boughtAt || b.createdAt || 0) - new Date(a.boughtAt || a.createdAt || 0));
+  const totalWishlistPlanned = plannedWishlists.reduce((a, w) => a + (Number(w.price) || 0), 0);
   const reminders = data?.analytics?.reminders;
   const upcomingBills = reminders?.upcomingBills || [];
   const allDebts = data?.profile?.debts || [];
@@ -374,6 +397,105 @@ export default function TabunganPage() {
     } finally {
       setActionLoading(false);
     }
+  }
+
+  function openNewWishModal() {
+    setEditingWish(null);
+    setWishName("");
+    setWishPrice("");
+    setWishSaved("");
+    setWishUrl("");
+    setWishPriority("medium");
+    setWishNote("");
+    setWishModalOpen(true);
+  }
+
+  function openEditWishModal(w) {
+    setEditingWish(w);
+    setWishName(w.name || "");
+    setWishPrice(w.price ? String(w.price) : "");
+    setWishSaved(w.saved ? String(w.saved) : "");
+    setWishUrl(w.url || "");
+    setWishPriority(w.priority || "medium");
+    setWishNote(w.note || "");
+    setWishModalOpen(true);
+  }
+
+  async function handleSaveWishlist(e) {
+    e.preventDefault();
+    if (!wishName.trim()) return;
+    setActionLoading(true);
+    try {
+      const payload = editingWish
+        ? {
+            action: "update_wishlist",
+            wishlistId: editingWish.id,
+            patch: {
+              name: wishName.trim(),
+              price: Number(wishPrice) || 0,
+              saved: Number(wishSaved) || 0,
+              url: wishUrl.trim(),
+              priority: wishPriority,
+              note: wishNote.trim(),
+            },
+          }
+        : {
+            action: "add_wishlist",
+            name: wishName.trim(),
+            price: Number(wishPrice) || 0,
+            saved: Number(wishSaved) || 0,
+            url: wishUrl.trim(),
+            priority: wishPriority,
+            note: wishNote.trim(),
+          };
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setWishModalOpen(false);
+        setEditingWish(null);
+        await reload();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleBuyWishlist(e) {
+    e.preventDefault();
+    if (!buyWishTarget) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "buy_wishlist",
+          wishlistId: buyWishTarget.id,
+          walletId: buyWishLogTx ? buyWishWalletId : "",
+          amount: Number(buyWishAmount) || buyWishTarget.price || 0,
+          logTx: buyWishLogTx,
+        }),
+      });
+      if (res.ok) {
+        setBuyWishTarget(null);
+        await reload();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDeleteWishlist(wishlistId) {
+    if (!confirm("Hapus item ini dari wishlist?")) return;
+    const res = await fetch("/api/diablo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_wishlist", wishlistId }),
+    });
+    if (res.ok) await reload();
   }
 
   if (loading && !data) {
@@ -900,6 +1022,206 @@ export default function TabunganPage() {
           )}
         </section>
 
+        {/* WISHLIST BELANJA */}
+        <section id="wishlist" className="bento-card rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-accent-300" />
+                <span>Wishlist Belanja</span>
+              </h2>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Daftar barang incaran + link — bisa dicek kelayakannya oleh Diablo AI sebelum checkout
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {plannedWishlists.length > 0 && (
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-accent-500/15 text-accent-300 border border-accent-500/30">
+                  Total: {formatRupiah(totalWishlistPlanned)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={openNewWishModal}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5 text-accent-300" />
+                Tambah Wishlist
+              </button>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setWishlistTab("planned")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                wishlistTab === "planned"
+                  ? "bg-accent-500 text-slate-950 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>Direncanakan</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  wishlistTab === "planned" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {plannedWishlists.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setWishlistTab("bought")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                wishlistTab === "bought"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 border border-transparent"
+              }`}
+            >
+              <CheckCircle className="w-3 h-3" />
+              <span>Sudah Dibeli</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  wishlistTab === "bought" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {boughtWishlists.length}
+              </span>
+            </button>
+          </div>
+
+          {wishlistTab === "planned" ? (
+            plannedWishlists.length === 0 ? (
+              <p className="text-xs text-slate-500 py-2">
+                Belum ada wishlist. Klik &ldquo;Tambah Wishlist&rdquo; atau ketik <code className="px-1 py-0.5 rounded bg-slate-900 text-slate-300 font-mono text-[10px]">tambah wishlist ...</code> di Telegram.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {plannedWishlists.map((w) => {
+                  const pct = w.price > 0 ? Math.min(100, Math.round(((w.saved || 0) / w.price) * 100)) : 0;
+                  return (
+                    <div key={w.id} className="p-3.5 rounded-xl bg-slate-900/65 border border-slate-800 space-y-2.5 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-100 text-[13px] truncate">{w.name}</span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                                w.priority === "high"
+                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                  : w.priority === "low"
+                                  ? "bg-slate-800 text-slate-400"
+                                  : "bg-accent-500/15 text-accent-300 border border-accent-500/25"
+                              }`}
+                            >
+                              {w.priority === "high" ? "Prioritas" : w.priority === "low" ? "Santai" : "Sedang"}
+                            </span>
+                          </div>
+                          <div className="font-mono font-bold text-sm text-emerald-400 mt-1">
+                            {w.price > 0 ? formatRupiah(w.price) : "Harga belum diisi"}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openEditWishModal(w)}
+                            title="Edit wishlist"
+                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-accent-300"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBuyWishTarget(w);
+                              setBuyWishAmount(w.price ? String(w.price) : "");
+                              setBuyWishWalletId(wallets.find((x) => !x.locked && x.role !== "credit")?.id || "bni");
+                              setBuyWishLogTx(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold transition"
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            Beli
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWishlist(w.id)}
+                            title="Hapus wishlist"
+                            className="p-1 text-slate-500 hover:text-rose-400"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {w.saved > 0 && w.price > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-slate-400">
+                            <span>Terkumpul {formatRupiah(w.saved)}</span>
+                            <span className="font-mono text-accent-300">{pct}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                            <div style={{ width: `${pct}%` }} className="h-full bg-accent-500 rounded-full" />
+                          </div>
+                        </div>
+                      )}
+
+                      {(w.url || w.note) && (
+                        <div className="pt-1.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          {w.note ? <span className="text-slate-400 truncate">{w.note}</span> : <span />}
+                          {w.url && /^https?:\/\//i.test(w.url) && (
+                            <a
+                              href={w.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-accent-300 hover:text-accent-200 font-semibold shrink-0"
+                            >
+                              <span>Buka Link</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : boughtWishlists.length === 0 ? (
+            <p className="text-xs text-slate-500 py-2">Belum ada wishlist yang dibeli.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {boughtWishlists.map((w) => (
+                <div key={w.id} className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-200 truncate">{w.name}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono text-slate-300">{formatRupiah(w.price)}</span>
+                      {w.boughtAt && <span>• {formatShortDate(w.boughtAt, false)}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 text-[10px] font-semibold">
+                      <CheckCircle className="w-3 h-3" />
+                      Dibeli
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteWishlist(w.id)}
+                      title="Hapus wishlist"
+                      className="p-1 text-slate-500 hover:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Hero Card: Total Pos Tabungan */}
         <section className="bento-card rounded-3xl p-6 sm:p-8 space-y-4">
           <div className="flex items-center justify-between">
@@ -1351,6 +1673,171 @@ export default function TabunganPage() {
             </div>
           );
         })()}
+
+        {/* MODAL: Tambah / Edit Wishlist */}
+        {wishModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold font-heading text-slate-100">
+                {editingWish ? "Edit Wishlist" : "Tambah Wishlist Belanja"}
+              </h3>
+              <form onSubmit={handleSaveWishlist} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Nama Barang</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="Misal: Huawei Watch Fit 5"
+                    value={wishName}
+                    onChange={(e) => setWishName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Harga (Rp)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="1740800"
+                      value={wishPrice}
+                      onChange={(e) => setWishPrice(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Sudah Terkumpul</label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={wishSaved}
+                      onChange={(e) => setWishSaved(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Prioritas</label>
+                  <select
+                    value={wishPriority}
+                    onChange={(e) => setWishPriority(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  >
+                    <option value="high">Prioritas Tinggi</option>
+                    <option value="medium">Sedang</option>
+                    <option value="low">Santai</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Link Produk (opsional)</label>
+                  <input
+                    type="url"
+                    placeholder="https://id.shp.ee/..."
+                    value={wishUrl}
+                    onChange={(e) => setWishUrl(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Misal: tunggu promo gajian"
+                    value={wishNote}
+                    onChange={(e) => setWishNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setWishModalOpen(false)}
+                    className="px-3 py-1.5 text-xs text-slate-400"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-bold text-xs transition"
+                  >
+                    {actionLoading ? "Menyimpan..." : "Simpan Wishlist"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Tandai Wishlist Dibeli */}
+        {buyWishTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold font-heading text-slate-100">
+                Beli Wishlist: {buyWishTarget.name}
+              </h3>
+              <form onSubmit={handleBuyWishlist} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Nominal Beli (Rp)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={buyWishAmount}
+                    onChange={(e) => setBuyWishAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={buyWishLogTx}
+                    onChange={(e) => setBuyWishLogTx(e.target.checked)}
+                    className="rounded border-slate-700 bg-slate-900"
+                  />
+                  <span>Catat pengeluaran &amp; potong saldo dompet</span>
+                </label>
+                {buyWishLogTx && (
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Pakai Sumber Dana</label>
+                    <select
+                      value={buyWishWalletId}
+                      onChange={(e) => setBuyWishWalletId(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    >
+                      {wallets
+                        .filter((w) => !w.locked)
+                        .map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({formatRupiah(w.balance)})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setBuyWishTarget(null)}
+                    className="px-3 py-1.5 text-xs text-slate-400"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1 transition"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Konfirmasi Dibeli
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
 
       <QuickLogModal

@@ -22,6 +22,10 @@ import {
   deleteDebt,
   adjustDebtAmount,
   simplifyDebts,
+  addWishlist,
+  updateWishlist,
+  buyWishlist,
+  deleteWishlist,
   computePeriodReport,
   buildPeriodCsv,
 } from "@/lib/store";
@@ -254,6 +258,42 @@ export async function POST(req) {
 
     if (action === "delete_debt") {
       const updated = await deleteDebt(userId, body.debtId);
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "add_wishlist") {
+      if (!String(body.name || "").trim()) {
+        return NextResponse.json({ error: "Nama barang wishlist wajib diisi." }, { status: 400 });
+      }
+      const result = await addWishlist(userId, {
+        name: body.name,
+        price: body.price,
+        saved: body.saved,
+        url: body.url || "",
+        priority: body.priority || "medium",
+        note: body.note || "",
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "update_wishlist") {
+      const result = await updateWishlist(userId, body.wishlistId, body.patch || {});
+      if (!result) return NextResponse.json({ error: "Item wishlist tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "buy_wishlist") {
+      const result = await buyWishlist(userId, body.wishlistId, {
+        walletId: body.walletId || "",
+        amount: body.amount,
+        logTx: body.logTx !== false,
+      });
+      if (!result) return NextResponse.json({ error: "Item wishlist tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "delete_wishlist") {
+      const updated = await deleteWishlist(userId, body.wishlistId);
       return NextResponse.json({ ok: true, profile: updated });
     }
 
