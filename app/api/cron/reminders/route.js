@@ -14,11 +14,10 @@ import { buildReminderTelegramMessage } from "@/lib/reminders-tg";
 import { appUrl } from "@/lib/auth";
 import { getConfig } from "@/lib/bundled-config";
 
-async function sendTg(chatId, text, replyMarkup = null, threadId = null) {
+async function sendTg(chatId, text, replyMarkup = null) {
   const token = getConfig("TELEGRAM_BOT_TOKEN") || process.env.TELEGRAM_BOT_TOKEN || "";
   if (!token) return false;
   const payload = { chat_id: chatId, text, parse_mode: "Markdown" };
-  if (threadId) payload.message_thread_id = Number(threadId) || threadId;
   if (replyMarkup) payload.reply_markup = replyMarkup;
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -27,15 +26,6 @@ async function sendTg(chatId, text, replyMarkup = null, threadId = null) {
     body: JSON.stringify(payload),
   });
   return res.ok;
-}
-
-async function sendToPreferredRoom(uid, profile, text, replyMarkup = null) {
-  const ch = profile?.telegramChannels;
-  if (ch?.groupChatId) {
-    const ok = await sendTg(ch.groupChatId, text, replyMarkup, ch.advisorThreadId || null);
-    if (ok) return true;
-  }
-  return sendTg(uid, text, replyMarkup, null);
 }
 
 function isAuthorizedCron(req) {
@@ -82,7 +72,7 @@ export async function GET(req) {
           const token = await createLoginToken(uid);
           const reportUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent(`/laporan?period=${prevPeriodKey}`)}`;
           const { text, replyMarkup } = buildPeriodTelegramReport(profile, prevReport, reportUrl);
-          cycleReportSent = await sendToPreferredRoom(uid, profile, text, replyMarkup);
+          cycleReportSent = await sendTg(uid, text, replyMarkup);
           if (cycleReportSent) {
             await saveUserProfile(uid, { lastCycleReportPeriod: prevPeriodKey });
           }
@@ -113,7 +103,7 @@ export async function GET(req) {
         continue;
       }
 
-      const sent = await sendToPreferredRoom(uid, profile, text, replyMarkup);
+      const sent = await sendTg(uid, text, replyMarkup);
       if (sent) {
         await saveUserProfile(uid, { lastReminderDate: rem.todayKey });
       }

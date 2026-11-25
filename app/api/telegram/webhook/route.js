@@ -72,8 +72,6 @@ async function ensureBotCommands(token) {
           { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
           { command: "laporan", description: "📑 Laporan periode bulanan & sheet" },
           { command: "wishlist", description: "🛍️ Daftar, tambah & beli wishlist" },
-          { command: "set_advisor", description: "🧠 Set room: Advisor, Wishlist & Reminder" },
-          { command: "set_rekap", description: "📝 Set room: Catat & Rekap Transaksi" },
           { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
           { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
           { command: "undo", description: "↩️ Batalkan transaksi terakhir" },
@@ -1310,79 +1308,6 @@ export async function POST(req) {
       }).catch(() => {});
     }
 
-    const ch = profile?.telegramChannels || {};
-    const isBoundGroup = Boolean(ch.groupChatId && String(chatId) === String(ch.groupChatId));
-    const threadKey = threadId ? String(threadId) : "";
-    const isAdvisorRoom = Boolean(isBoundGroup && ch.advisorThreadId && threadKey === String(ch.advisorThreadId));
-    const isLoggerRoom = Boolean(isBoundGroup && ch.loggerThreadId && threadKey === String(ch.loggerThreadId));
-
-    // Room Binding Commands: /set_advisor, /set_rekap, /rooms
-    if (
-      text === "/set_advisor" ||
-      text.startsWith("/set_advisor@") ||
-      text === "/set_reminder" ||
-      text.startsWith("/set_reminder@")
-    ) {
-      const nextCh = {
-        ...ch,
-        groupChatId: String(chatId),
-        advisorThreadId: threadKey,
-      };
-      await saveUserProfile(userId, { telegramChannels: nextCh });
-      await sendTelegramMessage(
-        chatId,
-        `🧠 *Room Advisor, Wishlist & Reminder Aktif!*\n` +
-          `• Group ID: \`${chatId}\`\n` +
-          `• Topic ID: \`${threadKey || "General"}\`\n\n` +
-          `Di room ini Tuan bebas:\n` +
-          `• Tanya *wise/aman ga beli X?* (tanpa takut salah tercatat jadi pengeluaran)\n` +
-          `• Tambah/cek/beli *wishlist* (mis. \`tambah wishlist mouse 400k https://...\`)\n` +
-          `• Terima *reminder tagihan/utang pagi* & *laporan bulanan tgl 25 pagi* otomatis.`,
-        threadId
-      );
-      return NextResponse.json({ ok: true, mode: "set_advisor_room" });
-    }
-
-    if (
-      text === "/set_rekap" ||
-      text.startsWith("/set_rekap@") ||
-      text === "/set_catat" ||
-      text.startsWith("/set_catat@") ||
-      text === "/set_pelaporan" ||
-      text.startsWith("/set_pelaporan@")
-    ) {
-      const nextCh = {
-        ...ch,
-        groupChatId: String(chatId),
-        loggerThreadId: threadKey,
-      };
-      await saveUserProfile(userId, { telegramChannels: nextCh });
-      await sendTelegramMessage(
-        chatId,
-        `📝 *Room Catat & Rekap Aktif!*\n` +
-          `• Group ID: \`${chatId}\`\n` +
-          `• Topic ID: \`${threadKey || "General"}\`\n\n` +
-          `Gunakan room ini untuk:\n` +
-          `• Catat pengeluaran/pemasukan harian & foto struk\n` +
-          `• Transfer antar dompet, audit saldo, `/saldo`, `/rekap`, `/laporan`.`,
-        threadId
-      );
-      return NextResponse.json({ ok: true, mode: "set_logger_room" });
-    }
-
-    if (text === "/rooms" || text.startsWith("/rooms@") || text === "/room" || text.startsWith("/room@")) {
-      await sendTelegramMessage(
-        chatId,
-        `💬 *Konfigurasi 2 Chatroom Diablo*\n` +
-          `• Group ID: \`${ch.groupChatId || "Belum di-set"}\`\n` +
-          `• Room Advisor & Reminder Topic: \`${ch.advisorThreadId || (ch.groupChatId ? "General" : "-")}\`\n` +
-          `• Room Catat & Rekap Topic: \`${ch.loggerThreadId || (ch.groupChatId ? "General" : "-")}\`\n\n` +
-          `_Kirim \`/set_advisor\` di Topic Advisor dan \`/set_rekap\` di Topic Catat & Rekap._`,
-        threadId
-      );
-      return NextResponse.json({ ok: true, mode: "show_rooms" });
-    }
-
     // Command: /start atau /help
     if (text === "/start" || text === "/help" || text.startsWith("/start@") || text.startsWith("/help@")) {
       const isConfigured = profile && (profile.monthlyIncome > 0 || (profile.wallets || []).length > 0);
@@ -1901,23 +1826,6 @@ export async function POST(req) {
         { inline_keyboard: rows }
       );
       return NextResponse.json({ ok: true, mode: "wishlist_buy_pick_wallet", wishId: matched.id });
-    }
-
-    // Room Advisor & Reminder: semua chat bebas langsung ditangani AI Advisor (tanpa salah catat transaksi!)
-    if (isAdvisorRoom) {
-      if (photos && photos.length > 0) {
-        await sendTelegramMessage(
-          chatId,
-          `Tuan sedang berada di Room *Advisor, Wishlist & Reminder*.\nUntuk catat struk atau mutasi, silakan kirim fotonya di Room *Catat & Rekap* ya Tuan.`,
-          threadId
-        );
-        return NextResponse.json({ ok: true, mode: "advisor_room_photo_hint" });
-      }
-      const cleanQuestion = text.replace(/^\/(?:tanya|ask|advisor)\s*/i, "").trim();
-      const advResult = await askFinancialAdvisor(cleanQuestion, profile, analytics, transactions);
-      await addAdvisorHistory(userId, { question: cleanQuestion, reply: advResult.reply, verdict: advResult.verdict });
-      await sendTelegramMessage(chatId, advResult.reply, threadId);
-      return NextResponse.json({ ok: true, mode: "advisor_room" });
     }
 
     // Foto Struk / QRIS / Mutasi
