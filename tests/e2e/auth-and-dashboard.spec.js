@@ -11,11 +11,11 @@ test.describe("Diablo Finance E2E Testing", () => {
     await expect(page.locator("text=Masuk Tanpa Password")).toBeVisible();
 
     // Check 3-step instructions
-    await expect(page.getByText("@diablofin_bot").first()).toBeVisible();
+    await expect(page.getByText("@diablo_finance_bot").first()).toBeVisible();
     await expect(page.locator("text=/login").first()).toBeVisible();
 
     // Check Telegram CTA button
-    const cta = page.locator("a[href='https://t.me/diablofin_bot']");
+    const cta = page.locator("a[href='https://t.me/diablo_finance_bot']");
     await expect(cta).toBeVisible();
   });
 

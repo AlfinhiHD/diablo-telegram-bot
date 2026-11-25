@@ -2,7 +2,7 @@
 
 > *"Kufufufu... Hamba, Diablo, siap menjaga kemakmuran dan martabat pundi-pundi Tuanku."*
 
-Asisten finansial pribadi berbasis **Telegram Bot (@diablofin_bot)** dan **Web Dashboard Mobile-First** yang didukung oleh **Next.js 15**, **Google Gemini AI**, dan **Firebase Firestore**.
+Asisten finansial pribadi berbasis **Telegram Bot (@diablo_finance_bot)** dan **Web Dashboard Mobile-First** yang didukung oleh **Next.js 15**, **Google Gemini AI**, dan **Firebase Firestore**.
 
 ---
 

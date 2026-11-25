@@ -107,7 +107,7 @@ function LoginContent() {
               </span>
               <div className="text-xs text-slate-300">
                 Buka bot Telegram{" "}
-                <span className="font-semibold text-accent-300">@diablofin_bot</span>.
+                <span className="font-semibold text-accent-300">@diablo_finance_bot</span>.
               </div>
             </div>
 
@@ -132,7 +132,7 @@ function LoginContent() {
 
           {/* Action Button */}
           <a
-            href="https://t.me/diablofin_bot"
+            href="https://t.me/diablo_finance_bot"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-sm transition shadow-lg shadow-accent-500/20"
@@ -144,7 +144,7 @@ function LoginContent() {
             >
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
             </svg>
-            Buka @diablofin_bot di Telegram
+            Buka @diablo_finance_bot di Telegram
           </a>
 
           {/* Collapsible Manual Token Input for dev/testing */}
