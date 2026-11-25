@@ -25,6 +25,7 @@ import {
   Pencil,
   ShoppingBag,
   ExternalLink,
+  ListChecks,
 } from "lucide-react";
 
 export default function TabunganPage() {
@@ -91,10 +92,15 @@ export default function TabunganPage() {
   const [buyWishAmount, setBuyWishAmount] = useState("");
   const [buyWishLogTx, setBuyWishLogTx] = useState(true);
 
+  // Modal Atur Template Bagi Gaji
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [planDraft, setPlanDraft] = useState([]);
+
   const [actionLoading, setActionLoading] = useState(false);
 
   const wallets = data?.profile?.wallets || [];
   const pots = data?.profile?.savingsPots || [];
+  const paydayChecklist = data?.analytics?.paydayChecklist;
   const wishlists = data?.profile?.wishlists || [];
   const plannedWishlists = wishlists.filter((w) => w.status !== "bought");
   const boughtWishlists = wishlists
@@ -498,6 +504,79 @@ export default function TabunganPage() {
     if (res.ok) await reload();
   }
 
+  function openPlanModal() {
+    const existing = data?.profile?.paydayPlan || [];
+    setPlanDraft(
+      existing.length > 0
+        ? existing.map((x) => ({ ...x }))
+        : [
+            {
+              id: `pd_${Date.now()}`,
+              label: "Tabungan Rutin",
+              type: "transfer",
+              amount: 1000000,
+              fromWalletId: wallets.find((w) => w.role === "daily")?.id || "bni",
+              toWalletId: wallets.find((w) => w.role === "saving")?.id || "saqu",
+              billId: "",
+              note: "",
+            },
+          ]
+    );
+    setPlanModalOpen(true);
+  }
+
+  async function handleCompletePaydayStep(stepId, applyWallet = true) {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete_payday_step", stepId, applyWallet }),
+      });
+      if (res.ok) await reload();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleUncheckPaydayStep(stepId) {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "uncheck_payday_step", stepId }),
+      });
+      if (res.ok) await reload();
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSavePaydayPlan(e) {
+    e.preventDefault();
+    setActionLoading(true);
+    try {
+      const cleanItems = planDraft
+        .filter((it) => String(it.label || "").trim())
+        .map((it) => ({
+          ...it,
+          amount: Math.max(0, Number(it.amount) || 0),
+        }));
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save_payday_plan", items: cleanItems }),
+      });
+      if (res.ok) {
+        setPlanModalOpen(false);
+        await reload();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading && !data) {
     return (
       <div className="min-h-screen bg-fintech-canvas flex items-center justify-center p-4">
@@ -622,6 +701,178 @@ export default function TabunganPage() {
             </div>
           </section>
         )}
+
+        {/* CHECKLIST BAGI GAJI (PAYDAY SPLIT TO-DO) */}
+        <section id="gajian" className="bento-card rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <ListChecks className="w-4 h-4 text-emerald-400" />
+                <span>Checklist Bagi Gaji</span>
+                {paydayChecklist?.totalCount > 0 && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      paydayChecklist.allDone
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "bg-accent-500/15 text-accent-300 border border-accent-500/30"
+                    }`}
+                  >
+                    {paydayChecklist.doneCount}/{paydayChecklist.totalCount} selesai
+                  </span>
+                )}
+              </h2>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Panduan transfer &amp; bayar tiap gajian ({paydayChecklist?.periodShort || "Siklus Ini"} • {paydayChecklist?.periodRange || "-"}) — centang setelah transfer agar saldo ikut terpindah
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openPlanModal}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
+            >
+              <Pencil className="w-3 h-3 text-accent-300" />
+              Atur Template
+            </button>
+          </div>
+
+          {!paydayChecklist || paydayChecklist.items.length === 0 ? (
+            <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-xs text-slate-400 flex items-center justify-between gap-3">
+              <span>Belum ada template bagi gaji. Atur urutan transfer tabungan, kos, RDPU &amp; investasi tiap gajian.</span>
+              <button
+                type="button"
+                onClick={openPlanModal}
+                className="px-3 py-1.5 rounded-lg bg-accent-500 text-slate-950 font-bold text-[11px] shrink-0"
+              >
+                Buat Template
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">
+                  <div className="text-[10px] text-slate-400">Gaji Rutinan</div>
+                  <div className="font-mono font-bold text-slate-100 mt-0.5">
+                    {formatRupiah(paydayChecklist.monthlyIncome)}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">
+                  <div className="text-[10px] text-slate-400">Total Dialokasikan</div>
+                  <div className="font-mono font-bold text-accent-300 mt-0.5">
+                    {formatRupiah(paydayChecklist.totalPlanned)}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/25">
+                  <div className="text-[10px] text-emerald-300">Sisa Dana Harian</div>
+                  <div className="font-mono font-bold text-emerald-400 mt-0.5">
+                    {formatRupiah(paydayChecklist.remainingForDaily)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {paydayChecklist.items.map((it) => (
+                  <div
+                    key={it.id}
+                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs ${
+                      it.done
+                        ? "bg-emerald-500/[0.06] border-emerald-500/30"
+                        : it.auto
+                        ? "bg-amber-500/[0.06] border-amber-500/30"
+                        : "bg-slate-900/65 border-slate-800"
+                    }`}
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-semibold ${it.done ? "line-through text-slate-400" : "text-slate-100"}`}>
+                          {it.label}
+                        </span>
+                        {it.type === "transfer" && it.fromWalletName && it.toWalletName && (
+                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
+                            {it.fromWalletName} → {it.toWalletName}
+                          </span>
+                        )}
+                        {it.type === "bill" && it.fromWalletName && (
+                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
+                            via {it.fromWalletName}
+                          </span>
+                        )}
+                        {it.auto && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                            Tagihan Berjalan
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="font-mono font-bold text-slate-200">{formatRupiah(it.amount)}</span>
+                        {it.note && <span className="text-slate-400">• {it.note}</span>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {it.done ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                            <CheckCircle className="w-3 h-3" />
+                            Selesai
+                          </span>
+                          {!it.auto && (
+                            <button
+                              type="button"
+                              disabled={actionLoading}
+                              onClick={() => handleUncheckPaydayStep(it.id)}
+                              className="text-[10px] text-slate-500 hover:text-slate-300 px-1.5 py-1"
+                            >
+                              Batal
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={() => handleCompletePaydayStep(it.id, true)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[10px] font-semibold transition"
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            {it.type === "bill" ? "Bayar & Centang" : "Transfer & Centang"}
+                          </button>
+                          {!it.auto && (
+                            <button
+                              type="button"
+                              disabled={actionLoading}
+                              onClick={() => handleCompletePaydayStep(it.id, false)}
+                              title="Tandai selesai tanpa ubah saldo dompet"
+                              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium transition"
+                            >
+                              Centang saja
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {paydayChecklist.nearestWishlist && (
+                <div className="text-[11px] text-slate-400 pt-1 flex items-center justify-between gap-2 flex-wrap">
+                  <span>
+                    🛍️ Wishlist terdekat:{" "}
+                    <strong className="text-slate-200">{paydayChecklist.nearestWishlist.name}</strong> (
+                    <span className="font-mono text-accent-300">
+                      {formatRupiah(paydayChecklist.nearestWishlist.price)}
+                    </span>
+                    )
+                  </span>
+                  <a href="#wishlist" className="text-accent-300 hover:text-accent-200 font-semibold">
+                    Lihat Wishlist →
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* TAGIHAN TETAP & REMINDER JADWAL */}
         <section id="tagihan" className="bento-card rounded-2xl p-5 space-y-4">
@@ -1832,6 +2083,198 @@ export default function TabunganPage() {
                   >
                     <CheckCircle className="w-3.5 h-3.5" />
                     Konfirmasi Dibeli
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Atur Template Bagi Gaji */}
+        {planModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold font-heading text-slate-100">
+                    Template Checklist Bagi Gaji
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Total alokasi:{" "}
+                    <strong className="font-mono text-accent-300">
+                      {formatRupiah(planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0))}
+                    </strong>{" "}
+                    • Sisa untuk harian:{" "}
+                    <strong className="font-mono text-emerald-400">
+                      {formatRupiah(
+                        Math.max(
+                          0,
+                          (Number(data?.profile?.monthlyIncome) || 0) -
+                            planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+                        )
+                      )}
+                    </strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPlanDraft([
+                      ...planDraft,
+                      {
+                        id: `pd_${Date.now()}_${planDraft.length}`,
+                        label: "",
+                        type: "transfer",
+                        amount: 0,
+                        fromWalletId: "bni",
+                        toWalletId: "saqu",
+                        billId: "",
+                        note: "",
+                      },
+                    ])
+                  }
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold"
+                >
+                  + Tambah Baris
+                </button>
+              </div>
+
+              <form onSubmit={handleSavePaydayPlan} className="space-y-3">
+                <div className="space-y-2.5">
+                  {planDraft.map((row, idx) => (
+                    <div key={row.id || idx} className="p-3 rounded-xl bg-slate-900/75 border border-slate-800 space-y-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="Nama pos (mis. Dana Darurat RDPU)"
+                          value={row.label}
+                          onChange={(e) => {
+                            const next = [...planDraft];
+                            next[idx] = { ...row, label: e.target.value };
+                            setPlanDraft(next);
+                          }}
+                          className="sm:col-span-5 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100"
+                        />
+                        <select
+                          value={row.type}
+                          onChange={(e) => {
+                            const next = [...planDraft];
+                            next[idx] = { ...row, type: e.target.value };
+                            setPlanDraft(next);
+                          }}
+                          className="sm:col-span-3 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100"
+                        >
+                          <option value="transfer">Transfer Dompet</option>
+                          <option value="bill">Bayar Tagihan</option>
+                          <option value="note">Catatan Saja</option>
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Nominal"
+                          value={row.amount}
+                          onChange={(e) => {
+                            const next = [...planDraft];
+                            next[idx] = { ...row, amount: Number(e.target.value) || 0 };
+                            setPlanDraft(next);
+                          }}
+                          className="sm:col-span-3 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setPlanDraft(planDraft.filter((_, i) => i !== idx))}
+                          className="sm:col-span-1 p-1.5 text-slate-500 hover:text-rose-400 flex items-center justify-center"
+                          title="Hapus baris"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <select
+                          value={row.fromWalletId || ""}
+                          onChange={(e) => {
+                            const next = [...planDraft];
+                            next[idx] = { ...row, fromWalletId: e.target.value };
+                            setPlanDraft(next);
+                          }}
+                          className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
+                        >
+                          <option value="">Dari: (opsional)</option>
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              Dari: {w.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        {row.type === "bill" ? (
+                          <select
+                            value={row.billId || ""}
+                            onChange={(e) => {
+                              const next = [...planDraft];
+                              next[idx] = { ...row, billId: e.target.value };
+                              setPlanDraft(next);
+                            }}
+                            className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
+                          >
+                            <option value="">Pilih Tagihan</option>
+                            {(data?.profile?.fixedCosts || []).map((fc) => (
+                              <option key={fc.id} value={fc.id}>
+                                {fc.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <select
+                            value={row.toWalletId || ""}
+                            onChange={(e) => {
+                              const next = [...planDraft];
+                              next[idx] = { ...row, toWalletId: e.target.value };
+                              setPlanDraft(next);
+                            }}
+                            className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
+                          >
+                            <option value="">Ke: (opsional)</option>
+                            {wallets.map((w) => (
+                              <option key={w.id} value={w.id}>
+                                Ke: {w.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        <input
+                          type="text"
+                          placeholder="Catatan singkat"
+                          value={row.note || ""}
+                          onChange={(e) => {
+                            const next = [...planDraft];
+                            next[idx] = { ...row, note: e.target.value };
+                            setPlanDraft(next);
+                          }}
+                          className="px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPlanModalOpen(false)}
+                    className="px-3 py-1.5 text-xs text-slate-400"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-bold text-xs transition"
+                  >
+                    {actionLoading ? "Menyimpan..." : "Simpan Template"}
                   </button>
                 </div>
               </form>

@@ -32,6 +32,7 @@ import {
   addWishlist,
   findOpenWishlist,
   buyWishlist,
+  executePaydayStep,
   computePeriodReport,
   getPreviousPeriodKey,
   buildPeriodTelegramReport,
@@ -45,7 +46,7 @@ import {
   applyTimeReplyToPendingItems,
   detectExplicitWalletId,
 } from "../../../../lib/diablo-ai.js";
-import { buildReminderTelegramMessage } from "../../../../lib/reminders-tg.js";
+import { buildReminderTelegramMessage, buildPaydayChecklistTelegramMessage } from "../../../../lib/reminders-tg.js";
 import { isAllowedUser, appUrl } from "../../../../lib/auth.js";
 import { formatRupiah, toWibParts, fromWib, startOfWibDay, parseAmount } from "../../../../lib/format.js";
 import { getConfig } from "../../../../lib/bundled-config.js";
@@ -71,6 +72,7 @@ async function ensureBotCommands(token) {
           { command: "utang", description: "🧾 Cek catatan utang & piutang" },
           { command: "analisis", description: "📊 Laporan boros & kesehatan pundi" },
           { command: "laporan", description: "📑 Laporan periode bulanan & sheet" },
+          { command: "gajian", description: "💸 Checklist bagi gaji (transfer & tagihan)" },
           { command: "wishlist", description: "🛍️ Daftar, tambah & beli wishlist" },
           { command: "dashboard", description: "🔑 Buka Web Dashboard Diablo" },
           { command: "nabung", description: "💰 Setor tabungan: /nabung <pos> <nominal>" },
@@ -1202,6 +1204,55 @@ export async function POST(req) {
         return NextResponse.json({ ok: true, mode: "wishlist_bought", wishId });
       }
 
+      // 12. Payday Split Checklist Callback (payday_done:<stepId>)
+      if (data.startsWith("payday_done:")) {
+        const stepId = data.slice("payday_done:".length).trim();
+        const res = await executePaydayStep(cbUserId, stepId, { applyWallet: true });
+        if (!res) {
+          await answerCallbackQuery(cbId, "Item checklist tidak ditemukan");
+          return NextResponse.json({ ok: true });
+        }
+        if (res.error) {
+          await answerCallbackQuery(cbId, res.error);
+          return NextResponse.json({ ok: true });
+        }
+        if (res.alreadyDone) {
+          await answerCallbackQuery(cbId, "Item ini sudah selesai sebelumnya");
+          return NextResponse.json({ ok: true });
+        }
+
+        const freshProfile = res.profile || (await getUserProfile(cbUserId));
+        const freshTxs = await getTransactions(cbUserId, 200);
+        const freshAnalytics = computeAnalytics(freshProfile, freshTxs);
+        const pc = freshAnalytics.paydayChecklist;
+
+        await answerCallbackQuery(cbId, `✅ ${res.step.label} selesai!`);
+        const token = await createLoginToken(cbUserId);
+        const webUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent("/tabungan#gajian")}`;
+        const updatedMsg = buildPaydayChecklistTelegramMessage(freshProfile, freshAnalytics, webUrl);
+
+        let balanceInfo = "";
+        if (res.step.fromWalletId) {
+          const fw = freshProfile.wallets?.find((w) => w.id === res.step.fromWalletId);
+          if (fw) balanceInfo += `\n• ${walletEmoji(fw)} *${fw.name}*: *${formatRupiah(fw.balance)}*`;
+        }
+        if (res.step.toWalletId) {
+          const tw = freshProfile.wallets?.find((w) => w.id === res.step.toWalletId);
+          if (tw) balanceInfo += `\n• ${walletEmoji(tw)} *${tw.name}*: *${formatRupiah(tw.balance)}*`;
+        }
+
+        await sendTelegramMessage(
+          cbChatId,
+          `✅ *${res.step.label}* (${formatRupiah(res.step.amount)}) selesai!` +
+            balanceInfo +
+            `\n\n📊 Progres Bagi Gaji: *${pc.doneCount}/${pc.totalCount} selesai*` +
+            (pc.allDone ? `\n🎉 *Semua alokasi gaji bulan ini sudah beres, Tuan!*` : ""),
+          cbThreadId,
+          updatedMsg.replyMarkup
+        );
+        return NextResponse.json({ ok: true, mode: "payday_step_done", stepId });
+      }
+
       await answerCallbackQuery(cbId);
       return NextResponse.json({ ok: true });
     }
@@ -1712,6 +1763,24 @@ export async function POST(req) {
         inline_keyboard: [[{ text: "🔑 Buka Web Dashboard Lengkap", url: loginUrl }]],
       });
       return NextResponse.json({ ok: true, mode: "fast_analysis_query" });
+    }
+
+    // Command & Natural Trigger: /gajian (Checklist Bagi Gaji)
+    const isGajianRequest =
+      text === "/gajian" ||
+      text.startsWith("/gajian@") ||
+      lower === "gajian" ||
+      lower === "bagi gaji" ||
+      lower === "checklist gajian" ||
+      lower === "todo gajian" ||
+      lower === "alokasi gaji";
+
+    if (isGajianRequest) {
+      const token = await createLoginToken(userId);
+      const webUrl = `${appUrl()}/auth/verify?token=${token}&next=${encodeURIComponent("/tabungan#gajian")}`;
+      const { text: pcText, replyMarkup } = buildPaydayChecklistTelegramMessage(profile, analytics, webUrl);
+      await sendTelegramMessage(chatId, pcText, threadId, replyMarkup);
+      return NextResponse.json({ ok: true, mode: "payday_checklist" });
     }
 
     // Command & Natural Trigger: Wishlist (/wishlist, tambah wishlist, beli wishlist)

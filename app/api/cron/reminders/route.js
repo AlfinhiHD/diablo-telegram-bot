@@ -10,7 +10,7 @@ import {
   computePeriodReport,
   buildPeriodTelegramReport,
 } from "@/lib/store";
-import { buildReminderTelegramMessage } from "@/lib/reminders-tg";
+import { buildReminderTelegramMessage, buildPaydayChecklistTelegramMessage } from "@/lib/reminders-tg";
 import { appUrl } from "@/lib/auth";
 import { getConfig } from "@/lib/bundled-config";
 
@@ -107,7 +107,21 @@ export async function GET(req) {
       if (sent) {
         await saveUserProfile(uid, { lastReminderDate: rem.todayKey });
       }
-      results.push({ uid, cycleReportSent, sent });
+
+      // 3. Jika hari ini gajian (tgl 25 pagi) & belum kirim hari ini, kirim juga Checklist Bagi Gaji
+      let paydayChecklistSent = false;
+      if (rem.isPayday && profile.lastReminderDate !== rem.todayKey && analytics.paydayChecklist?.items?.length > 0) {
+        const gajianToken = await createLoginToken(uid);
+        const gajianUrl = `${appUrl()}/auth/verify?token=${gajianToken}&next=${encodeURIComponent("/tabungan#gajian")}`;
+        const pcMsg = buildPaydayChecklistTelegramMessage(profile, analytics, gajianUrl);
+        if (pcMsg.hasContent) {
+          paydayChecklistSent = await sendTg(uid, pcMsg.text, pcMsg.replyMarkup);
+          if (paydayChecklistSent && !sent) {
+            await saveUserProfile(uid, { lastReminderDate: rem.todayKey });
+          }
+        }
+      }
+      results.push({ uid, cycleReportSent, sent, paydayChecklistSent });
     }
 
     return NextResponse.json({ ok: true, results });

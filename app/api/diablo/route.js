@@ -26,6 +26,8 @@ import {
   updateWishlist,
   buyWishlist,
   deleteWishlist,
+  executePaydayStep,
+  uncheckPaydayStep,
   computePeriodReport,
   buildPeriodCsv,
 } from "@/lib/store";
@@ -294,6 +296,26 @@ export async function POST(req) {
 
     if (action === "delete_wishlist") {
       const updated = await deleteWishlist(userId, body.wishlistId);
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "save_payday_plan") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      const updated = await saveUserProfile(userId, { paydayPlan: items });
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "complete_payday_step") {
+      const res = await executePaydayStep(userId, body.stepId, {
+        applyWallet: body.applyWallet !== false,
+      });
+      if (!res) return NextResponse.json({ error: "Item checklist tidak ditemukan" }, { status: 404 });
+      if (res.error) return NextResponse.json({ error: res.error }, { status: 400 });
+      return NextResponse.json({ ok: true, ...res });
+    }
+
+    if (action === "uncheck_payday_step") {
+      const updated = await uncheckPaydayStep(userId, body.stepId);
       return NextResponse.json({ ok: true, profile: updated });
     }
 

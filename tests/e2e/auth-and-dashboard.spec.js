@@ -58,6 +58,7 @@ test.describe("Diablo Finance E2E Testing", () => {
     await page.locator("nav a[href='/tabungan']").locator("visible=true").first().click();
     await expect(page).toHaveURL("/tabungan");
     await expect(page.locator("h1")).toContainText("Pos Tabungan Fleksibel");
+    await expect(page.getByText("Checklist Bagi Gaji")).toBeVisible();
     await expect(page.getByText("Wishlist Belanja")).toBeVisible();
 
     // Riwayat
