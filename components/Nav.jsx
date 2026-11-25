@@ -38,33 +38,25 @@ export default function Nav({ userId, profile, onQuickLog }) {
     <>
       {/* Top Navbar for Desktop & Tablet */}
       <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 group">
-            <DiabloAvatar className="w-9 h-9" showBadge={true} />
-            <div>
-              <div className="font-heading font-bold text-sm tracking-tight text-slate-100 flex items-center gap-2">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+          <Link href="/" className="flex items-center gap-2.5 group shrink-0 min-w-0">
+            <DiabloAvatar className="w-8 h-8 shrink-0" showBadge={true} />
+            <div className="min-w-0">
+              <div className="font-heading font-bold text-sm tracking-tight text-slate-100 flex items-center gap-1.5 whitespace-nowrap">
                 <span>Diablo Finance</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-300 border border-accent-500/30 font-mono hidden xs:inline-block">
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-300 border border-accent-500/30 font-mono hidden lg:inline-block">
                   Butler
                 </span>
               </div>
-              <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                <span className="font-semibold text-slate-200 truncate max-w-[120px] sm:max-w-[180px]">
+              <div className="text-[11px] text-slate-300 flex items-center gap-1.5 whitespace-nowrap">
+                <span className="font-semibold text-slate-200 truncate max-w-[110px]">
                   {displayName}
                 </span>
                 {handle && (
                   <>
-                    <span className="text-slate-600">•</span>
-                    <span className="text-slate-400 font-mono text-[10px] hidden sm:inline">
+                    <span className="text-slate-600 hidden lg:inline">•</span>
+                    <span className="text-slate-400 font-mono text-[10px] hidden lg:inline">
                       @{handle}
-                    </span>
-                  </>
-                )}
-                {userId && (
-                  <>
-                    <span className="text-slate-600 hidden md:inline">•</span>
-                    <span className="text-slate-500 font-mono text-[9px] hidden md:inline">
-                      ID: {userId}
                     </span>
                   </>
                 )}
@@ -73,20 +65,20 @@ export default function Nav({ userId, profile, onQuickLog }) {
           </Link>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden sm:flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+          <nav className="hidden sm:flex items-center gap-0.5 lg:gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800 shrink-0">
             {links.map(({ href, label, icon: Icon }) => {
               const active = pathname === href;
               return (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                  className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                     active
                       ? "bg-accent-500/20 text-accent-300 border border-accent-500/30 shadow-sm"
                       : "border border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span>{label}</span>
                 </Link>
               );
@@ -94,11 +86,11 @@ export default function Nav({ userId, profile, onQuickLog }) {
           </nav>
 
           {/* Right Action: Quick Log & Logout */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {onQuickLog && (
               <button
                 onClick={onQuickLog}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-500 hover:bg-accent-400 text-slate-950 text-xs font-semibold transition shadow-sm shadow-accent-500/20"
+                className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-500 hover:bg-accent-400 text-slate-950 text-xs font-semibold whitespace-nowrap shrink-0 transition shadow-sm shadow-accent-500/20"
               >
                 <span>+ Catat</span>
               </button>
@@ -110,9 +102,9 @@ export default function Nav({ userId, profile, onQuickLog }) {
               disabled={loggingOut}
               title="Keluar / Ganti Akun"
               aria-label="Keluar"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 disabled:opacity-50 transition"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 disabled:opacity-50 whitespace-nowrap shrink-0 transition"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
               <span>{loggingOut ? "Keluar..." : "Keluar"}</span>
             </button>
           </div>

@@ -458,19 +458,21 @@ export default function TabunganPage() {
                   <Link
                     key={w.id}
                     href={`/riwayat?wallet=${encodeURIComponent(w.id)}`}
-                    className={`p-4 rounded-xl border transition flex items-center justify-between group ${
+                    className={`p-3.5 rounded-xl border transition flex items-center justify-between gap-2 group ${
                       hasDebt
                         ? "bg-rose-500/[0.06] border-rose-500/30 hover:border-rose-400/50"
                         : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
                     }`}
                   >
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-semibold text-slate-200">{w.name}</span>
-                        {w.locked && <Lock className="w-3 h-3 text-amber-400" />}
-                        {isCredit && <CreditCard className="w-3 h-3 text-rose-400" />}
+                    <div className="min-w-0 flex-1 pr-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-semibold text-slate-200 truncate" title={w.name}>
+                          {w.name}
+                        </span>
+                        {w.locked && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
+                        {isCredit && <CreditCard className="w-3 h-3 text-rose-400 shrink-0" />}
                       </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
+                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
                         {w.locked
                           ? "Dana Darurat (Terkunci)"
                           : isCredit
@@ -482,15 +484,15 @@ export default function TabunganPage() {
                           : "Simpanan"}
                       </div>
                     </div>
-                    <div className="text-right flex items-center gap-1.5">
+                    <div className="text-right flex items-center gap-1 shrink-0">
                       <span
-                        className={`text-sm font-bold font-mono-num ${
+                        className={`text-[13px] xl:text-sm font-bold font-mono-num whitespace-nowrap tabular-nums ${
                           hasDebt ? "text-rose-400" : w.locked ? "text-amber-300" : "text-emerald-400"
                         }`}
                       >
                         {formatRupiah(w.balance)}
                       </span>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-300" />
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-300 shrink-0" />
                     </div>
                   </Link>
                 );
@@ -524,7 +526,9 @@ export default function TabunganPage() {
                 <div
                   key={b.id}
                   className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-                    b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                    b.paidInCurrentCycle
+                      ? "bg-emerald-500/[0.06] border-emerald-500/30"
+                      : b.urgency === "OVERDUE" || b.urgency === "TODAY"
                       ? "bg-rose-500/[0.06] border-rose-500/30"
                       : b.urgency === "SOON"
                       ? "bg-amber-500/[0.06] border-amber-500/30"
@@ -532,7 +536,14 @@ export default function TabunganPage() {
                   }`}
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold text-slate-200 truncate">{b.name}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-slate-200 truncate">{b.name}</span>
+                      {b.paidInCurrentCycle && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 whitespace-nowrap">
+                          ✓ Sudah Dibayar{b.lastPaidLabel ? ` (${b.lastPaidLabel})` : ""}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
                       <span className="font-mono font-semibold text-slate-200">
                         {b.amount > 0 ? `${formatRupiah(b.amount)}/bln` : "Lunas"}
@@ -543,9 +554,17 @@ export default function TabunganPage() {
                           <span>Jatuh tempo {b.nextDueDate}</span>
                         </>
                       )}
+                      {!b.paidInCurrentCycle && b.lastPaidLabel && (
+                        <>
+                          <span>•</span>
+                          <span className="text-slate-500">Terakhir bayar {b.lastPaidLabel}</span>
+                        </>
+                      )}
                       <span
                         className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                          b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                          b.paidInCurrentCycle
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : b.urgency === "OVERDUE" || b.urgency === "TODAY"
                             ? "bg-rose-500/20 text-rose-300"
                             : b.urgency === "SOON"
                             ? "bg-amber-500/20 text-amber-300"
@@ -557,16 +576,34 @@ export default function TabunganPage() {
                     </div>
                   </div>
                   {b.amount > 0 && b.urgency !== "INACTIVE" && (
-                    <button
-                      onClick={() => {
-                        setPayBillTarget(b);
-                        setPayBillAmount(String(b.dueAmount || b.amount));
-                        setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[10px] font-semibold shrink-0 transition"
-                    >
-                      Tandai Bayar
-                    </button>
+                    b.paidInCurrentCycle ? (
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold whitespace-nowrap">
+                          ✓ Lunas
+                        </span>
+                        <button
+                          onClick={() => {
+                            setPayBillTarget(b);
+                            setPayBillAmount(String(b.dueAmount || b.amount));
+                            setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
+                          }}
+                          className="text-[9px] text-slate-500 hover:text-slate-300 transition whitespace-nowrap"
+                        >
+                          Bayar lagi
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setPayBillTarget(b);
+                          setPayBillAmount(String(b.dueAmount || b.amount));
+                          setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[10px] font-semibold shrink-0 transition"
+                      >
+                        Tandai Bayar
+                      </button>
+                    )
                   )}
                 </div>
               ))}

@@ -273,7 +273,7 @@ export default function HomePage() {
                     </div>
                     <div>
                       <div
-                        className={`text-sm font-bold font-mono-num ${
+                        className={`text-xs sm:text-sm font-bold font-mono-num whitespace-nowrap tabular-nums ${
                           hasCreditDebt
                             ? "text-rose-400"
                             : isCredit
@@ -359,14 +359,16 @@ export default function HomePage() {
                       <span className="font-mono text-slate-300">{formatRupiah(b.dueAmount)}</span>
                       <span
                         className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                          b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                          b.paidInCurrentCycle
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : b.urgency === "OVERDUE" || b.urgency === "TODAY"
                             ? "bg-rose-500/20 text-rose-300"
                             : b.urgency === "SOON"
                             ? "bg-amber-500/20 text-amber-300"
                             : "bg-slate-800 text-slate-400"
                         }`}
                       >
-                        {b.dueLabel}
+                        {b.paidInCurrentCycle ? "✓ Lunas" : b.dueLabel}
                       </span>
                     </div>
                   </div>
@@ -468,27 +470,44 @@ export default function HomePage() {
         {/* RATA-RATA PENGELUARAN VARIABEL (Kuota, Pulsa, Bensin, Laundry, Listrik) */}
         {varAvgs.length > 0 && (
           <section className="bento-card rounded-2xl p-4 sm:p-5 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Rata-Rata Rutin Variabel (Keseharian)
                 </h3>
                 <p className="text-[10px] text-slate-500">
-                  Estimasi per siklus untuk kuota, pulsa, bensin, listrik &amp; laundry ({varCycles} siklus data)
+                  Kebutuhan kuota, bensin, listrik &amp; laundry per siklus ({varCycles} siklus data)
                 </p>
               </div>
-              <Wallet className="w-4 h-4 text-slate-500" />
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                Estimasi Total: {formatRupiah(varAvgs.reduce((acc, v) => acc + (Number(v.avgMonthly) || 0), 0))}/bln
+              </span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {varAvgs.map((v) => (
-                <div key={v.key} className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
-                  <div className="text-[10px] text-slate-400">{v.label}</div>
-                  <div className="text-sm font-bold font-mono text-slate-100 mt-1">
+                <div key={v.key} className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-300">{v.label}</span>
+                    <span className="text-[10px] text-slate-500 font-mono">{v.count}x</span>
+                  </div>
+                  <div className="text-base font-bold font-mono text-slate-100">
                     {formatRupiah(v.avgMonthly)}<span className="text-[10px] text-slate-500 font-normal">/bln</span>
                   </div>
-                  <div className="text-[9px] text-slate-500 mt-0.5">
-                    Total {formatRupiah(v.total)} • {v.count}x
+                  <div className="text-[10px] text-slate-400">
+                    Rata-rata {formatRupiah(v.avgPerTx || 0)}/kali
                   </div>
+                  {Array.isArray(v.byPeriod) && v.byPeriod.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/70 space-y-1">
+                      {v.byPeriod.map((bp) => (
+                        <div key={bp.key} className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span>{bp.shortLabel}</span>
+                          <span className="font-mono text-slate-300">
+                            {formatRupiah(bp.total)} ({bp.count}x)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

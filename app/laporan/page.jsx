@@ -391,6 +391,38 @@ function LaporanContent() {
           </div>
         </section>
 
+        {/* Kebutuhan Rutin Variabel periode ini */}
+        {report.variableBreakdown?.some((v) => v.total > 0) && (
+          <section className="bento-card rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Kebutuhan Rutin Variabel ({report.period.shortLabel})
+                </h3>
+                <p className="text-[10px] text-slate-500">
+                  Realisasi kuota, bensin, listrik &amp; laundry pada periode ini
+                </p>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono bg-accent-500/15 text-accent-300 border border-accent-500/30">
+                Total: {formatRupiah(report.variableBreakdown.reduce((acc, v) => acc + v.total, 0))}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {report.variableBreakdown.map((v) => (
+                <div key={v.key} className="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80">
+                  <div className="text-[10px] text-slate-400">{v.label}</div>
+                  <div className="text-sm font-bold font-mono text-slate-100 mt-1">
+                    {formatRupiah(v.total)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {v.count > 0 ? `${v.count}x • rata-rata ${formatRupiah(Math.round(v.total / v.count))}/kali` : "Tidak ada transaksi"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Aktivitas Sumber Dana periode ini */}
         {report.byWallet.length > 0 && (
           <section className="bento-card rounded-2xl p-5 space-y-3">
