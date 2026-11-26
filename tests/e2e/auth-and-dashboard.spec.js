@@ -59,6 +59,7 @@ test.describe("Diablo Finance E2E Testing", () => {
     await expect(page).toHaveURL("/tabungan");
     await expect(page.locator("h1")).toContainText("Pos Tabungan Fleksibel");
     await expect(page.getByText("Checklist Bagi Gaji")).toBeVisible();
+    await expect(page.getByText("Piutang Cicilan")).toBeVisible();
     await expect(page.getByText("Wishlist Belanja")).toBeVisible();
 
     // Riwayat

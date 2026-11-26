@@ -78,6 +78,23 @@ export default function TabunganPage() {
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
 
+  // Piutang Cicilan (Berjangka, terpisah dari Utang/Piutang harian)
+  const [instTab, setInstTab] = useState("active"); // "active" | "paid"
+  const [instModalOpen, setInstModalOpen] = useState(false);
+  const [editingInst, setEditingInst] = useState(null);
+  const [instPerson, setInstPerson] = useState("");
+  const [instLabel, setInstLabel] = useState("");
+  const [instTotal, setInstTotal] = useState("");
+  const [instMonthly, setInstMonthly] = useState("");
+  const [instDueDay, setInstDueDay] = useState("27");
+  const [instTargetWalletId, setInstTargetWalletId] = useState("saqu_utama");
+  const [instNote, setInstNote] = useState("");
+  const [payInstTarget, setPayInstTarget] = useState(null);
+  const [payInstAmount, setPayInstAmount] = useState("");
+  const [payInstWalletId, setPayInstWalletId] = useState("saqu_utama");
+  const [payInstNote, setPayInstNote] = useState("");
+  const [payInstLogTx, setPayInstLogTx] = useState(true);
+
   // Wishlist Belanja
   const [wishlistTab, setWishlistTab] = useState("planned"); // "planned" | "bought"
   const [wishModalOpen, setWishModalOpen] = useState(false);
@@ -119,6 +136,20 @@ export default function TabunganPage() {
   const piutangList = openDebts.filter((d) => d.type === "piutang");
   const paidUtangList = paidDebts.filter((d) => d.type === "utang");
   const paidPiutangList = paidDebts.filter((d) => d.type === "piutang");
+
+  const allInstallments = data?.profile?.installments || [];
+  const upcomingInstallments = reminders?.upcomingInstallments || [];
+  const activeInstallments =
+    upcomingInstallments.length > 0
+      ? upcomingInstallments
+      : allInstallments.filter((it) => it.status !== "paid");
+  const paidInstallments = allInstallments
+    .filter((it) => it.status === "paid")
+    .sort((a, b) => new Date(b.paidAt || b.createdAt || 0) - new Date(a.paidAt || a.createdAt || 0));
+  const totalInstallmentRemaining = activeInstallments.reduce(
+    (a, it) => a + Math.max(0, (Number(it.totalAmount) || 0) - (Number(it.paidAmount) || 0)),
+    0
+  );
 
   const simplifiableGroups = (() => {
     const map = new Map();
@@ -493,6 +524,137 @@ export default function TabunganPage() {
     } finally {
       setActionLoading(false);
     }
+  }
+
+  function openNewInstModal() {
+    setEditingInst(null);
+    setInstPerson("");
+    setInstLabel("");
+    setInstTotal("");
+    setInstMonthly("");
+    setInstDueDay("27");
+    setInstTargetWalletId(
+      wallets.find((w) => w.id === "saqu_utama")?.id ||
+        wallets.find((w) => w.role === "saving" && !w.locked)?.id ||
+        wallets[0]?.id ||
+        ""
+    );
+    setInstNote("");
+    setInstModalOpen(true);
+  }
+
+  function openEditInstModal(inst) {
+    setEditingInst(inst);
+    setInstPerson(inst.person || "");
+    setInstLabel(inst.label || "");
+    setInstTotal(inst.totalAmount ? String(inst.totalAmount) : "");
+    setInstMonthly(inst.monthlyAmount ? String(inst.monthlyAmount) : "");
+    setInstDueDay(inst.dueDay ? String(inst.dueDay) : "27");
+    setInstTargetWalletId(inst.targetWalletId || "");
+    setInstNote(inst.note || "");
+    setInstModalOpen(true);
+  }
+
+  async function handleSaveInstallment(e) {
+    e.preventDefault();
+    if (!instPerson.trim() && !instLabel.trim()) return;
+    setActionLoading(true);
+    try {
+      const totalNum = Math.max(0, Number(instTotal) || 0);
+      const monthlyNum = Math.max(0, Number(instMonthly) || 0);
+      const computedMonths = monthlyNum > 0 && totalNum > 0 ? Math.max(1, Math.ceil(totalNum / monthlyNum)) : 1;
+      const payload = editingInst
+        ? {
+            action: "update_installment",
+            installmentId: editingInst.id,
+            patch: {
+              person: instPerson.trim() || editingInst.person,
+              label: instLabel.trim() || `Cicilan ${instPerson.trim() || editingInst.person}`,
+              totalAmount: totalNum,
+              monthlyAmount: monthlyNum,
+              totalMonths: computedMonths,
+              dueDay: Math.min(28, Math.max(1, Number(instDueDay) || 27)),
+              targetWalletId: instTargetWalletId,
+              note: instNote.trim(),
+            },
+          }
+        : {
+            action: "add_installment",
+            person: instPerson.trim() || instLabel.trim(),
+            label: instLabel.trim() || `Cicilan ${instPerson.trim()}`,
+            totalAmount: totalNum,
+            monthlyAmount: monthlyNum,
+            totalMonths: computedMonths,
+            dueDay: Math.min(28, Math.max(1, Number(instDueDay) || 27)),
+            targetWalletId: instTargetWalletId,
+            note: instNote.trim(),
+          };
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        setInstModalOpen(false);
+        setEditingInst(null);
+        await reload();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function openPayInstModal(inst) {
+    const remaining = Math.max(0, (Number(inst.totalAmount) || 0) - (Number(inst.paidAmount) || 0));
+    const suggested = Math.min(remaining, Number(inst.monthlyAmount) || remaining);
+    setPayInstTarget(inst);
+    setPayInstAmount(suggested > 0 ? String(suggested) : "");
+    setPayInstWalletId(
+      inst.targetWalletId ||
+        wallets.find((w) => w.id === "saqu_utama")?.id ||
+        wallets.find((w) => !w.locked && w.role !== "credit")?.id ||
+        "bni"
+    );
+    setPayInstNote("");
+    setPayInstLogTx(true);
+  }
+
+  async function handlePayInstallment(e) {
+    e.preventDefault();
+    if (!payInstTarget) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/diablo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "pay_installment",
+          installmentId: payInstTarget.id,
+          amount: Number(payInstAmount) || payInstTarget.monthlyAmount || 0,
+          walletId: payInstWalletId,
+          logTx: payInstLogTx,
+          note: payInstNote.trim(),
+        }),
+      });
+      if (res.ok) {
+        setPayInstTarget(null);
+        setPayInstAmount("");
+        setPayInstNote("");
+        await reload();
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDeleteInstallment(instId) {
+    if (!confirm("Hapus catatan piutang cicilan ini?")) return;
+    const res = await fetch("/api/diablo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_installment", installmentId: instId }),
+    });
+    if (res.ok) await reload();
   }
 
   async function handleDeleteWishlist(wishlistId) {
@@ -1275,6 +1437,235 @@ export default function TabunganPage() {
                       })}
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* PIUTANG CICILAN BERJANGKA (TERPISAH DARI UTANG HARIAN) */}
+        <section id="cicilan" className="bento-card rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-400" />
+                <span>Piutang Cicilan (Berjangka)</span>
+              </h2>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Terpisah dari utang harian • jatuh tempo bulanan otomatis diingatkan di Telegram
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {totalInstallmentRemaining > 0 && (
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  Sisa: {formatRupiah(totalInstallmentRemaining)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={openNewInstModal}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5 text-accent-300" />
+                Tambah Cicilan
+              </button>
+            </div>
+          </div>
+
+          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setInstTab("active")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                instTab === "active"
+                  ? "bg-accent-500 text-slate-950 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>Berjalan</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  instTab === "active" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {activeInstallments.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInstTab("paid")}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                instTab === "paid"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 border border-transparent"
+              }`}
+            >
+              <CheckCircle className="w-3 h-3" />
+              <span>Lunas</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                  instTab === "paid" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {paidInstallments.length}
+              </span>
+            </button>
+          </div>
+
+          {instTab === "active" ? (
+            activeInstallments.length === 0 ? (
+              <p className="text-xs text-slate-500">Belum ada piutang cicilan berjangka yang aktif.</p>
+            ) : (
+              <div className="space-y-3">
+                {activeInstallments.map((inst) => {
+                  const totalAmt = Number(inst.totalAmount) || 0;
+                  const paidAmt = Number(inst.paidAmount) || 0;
+                  const remaining = Math.max(0, totalAmt - paidAmt);
+                  const pct = totalAmt > 0 ? Math.min(100, Math.round((paidAmt / totalAmt) * 100)) : 0;
+                  const targetW = wallets.find((w) => w.id === inst.targetWalletId);
+                  const lastHist = Array.isArray(inst.history) && inst.history.length > 0
+                    ? inst.history[inst.history.length - 1]
+                    : null;
+                  const urgencyClass =
+                    inst.urgency === "OVERDUE" || inst.urgency === "TODAY"
+                      ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                      : inst.urgency === "SOON"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                      : "bg-slate-800 text-slate-300 border-slate-700";
+
+                  return (
+                    <div
+                      key={inst.id}
+                      className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3 text-xs"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-slate-100">
+                              {inst.label || `Cicilan ${inst.person}`}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-accent-500/15 text-accent-300 border border-accent-500/30 text-[10px] font-semibold">
+                              {inst.person}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${urgencyClass}`}>
+                              Tgl {inst.dueDay} {inst.dueLabel ? `• ${inst.dueLabel}` : ""}
+                            </span>
+                            {targetW && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-medium">
+                                → {targetW.name}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300">
+                            <span>
+                              Cicilan:{" "}
+                              <strong className="font-mono text-emerald-400">
+                                {formatRupiah(inst.monthlyAmount)}/bln
+                              </strong>
+                            </span>
+                            <span className="text-slate-600">•</span>
+                            <span>
+                              Sisa:{" "}
+                              <strong className="font-mono text-slate-100">
+                                {formatRupiah(remaining)}
+                              </strong>{" "}
+                              <span className="text-slate-500">/ {formatRupiah(totalAmt)}</span>
+                            </span>
+                            {inst.nextDueDate && (
+                              <>
+                                <span className="text-slate-600">•</span>
+                                <span className="text-slate-400">Jatuh tempo {inst.nextDueDate}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openPayInstModal(inst)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[11px] font-semibold transition"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Terima Cicilan</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditInstModal(inst)}
+                            title="Edit cicilan"
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-accent-300 transition"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInstallment(inst.id)}
+                            title="Hapus cicilan"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span>
+                            Progress: <strong className="text-slate-200 font-mono">{inst.paidCount}/{inst.totalMonths} bln</strong> • {pct}%
+                          </span>
+                          <span className="font-mono text-emerald-400">
+                            Masuk: {formatRupiah(paidAmt)}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-accent-500 to-emerald-400 transition-all duration-300"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {(inst.note || lastHist) && (
+                        <div className="pt-1.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                          <span>{inst.note || ""}</span>
+                          {lastHist && (
+                            <span className="text-emerald-300/90 font-mono">
+                              Terakhir masuk {formatShortDate(lastHist.paidAt, false)}: +{formatRupiah(lastHist.amount)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : paidInstallments.length === 0 ? (
+            <p className="text-xs text-slate-500">Belum ada piutang cicilan yang lunas.</p>
+          ) : (
+            <div className="space-y-2">
+              {paidInstallments.map((inst) => (
+                <div
+                  key={inst.id}
+                  className="p-3 rounded-xl bg-emerald-500/[0.04] border border-emerald-500/20 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div>
+                    <div className="font-bold text-slate-200">
+                      {inst.label || `Cicilan ${inst.person}`} ({inst.paidCount}/{inst.totalMonths} bln)
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      Total diterima: <span className="font-mono text-emerald-300">{formatRupiah(inst.paidAmount)}</span>
+                      {inst.paidAt && ` • Lunas ${formatShortDate(inst.paidAt, false)}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteInstallment(inst.id)}
+                    title="Hapus riwayat"
+                    className="p-1 text-slate-500 hover:text-rose-400"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -2302,6 +2693,210 @@ export default function TabunganPage() {
                   >
                     {actionLoading && <Spinner className="w-3.5 h-3.5" />}
                     <span>{actionLoading ? "Menyimpan..." : "Simpan Template"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Tambah / Edit Piutang Cicilan */}
+        {instModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-full max-w-md bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold font-heading text-slate-100">
+                {editingInst ? "Edit Piutang Cicilan" : "Tambah Piutang Cicilan Berjangka"}
+              </h3>
+              <form onSubmit={handleSaveInstallment} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Nama Orang</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Misal: Andani"
+                      value={instPerson}
+                      onChange={(e) => setInstPerson(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Label Cicilan</label>
+                    <input
+                      type="text"
+                      placeholder="Cicilan Andani"
+                      value={instLabel}
+                      onChange={(e) => setInstLabel(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Total Pokok (Rp)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="10000000"
+                      value={instTotal}
+                      onChange={(e) => setInstTotal(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Cicilan / Bulan (Rp)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="1000000"
+                      value={instMonthly}
+                      onChange={(e) => setInstMonthly(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Tanggal Jatuh Tempo (1-28)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="28"
+                      required
+                      value={instDueDay}
+                      onChange={(e) => setInstDueDay(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">Masuk ke Dompet</label>
+                    <select
+                      value={instTargetWalletId}
+                      onChange={(e) => setInstTargetWalletId(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    >
+                      <option value="">Pilih Dompet Tujuan</option>
+                      {wallets
+                        .filter((w) => !w.locked && w.role !== "credit")
+                        .map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Misal: Rencana untuk RDPU/DCA"
+                    value={instNote}
+                    onChange={(e) => setInstNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setInstModalOpen(false)}
+                    className="px-3 py-1.5 text-xs text-slate-400"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
+                  >
+                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                    <span>{actionLoading ? "Menyimpan..." : "Simpan Cicilan"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Terima Cicilan Bulanan */}
+        {payInstTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold font-heading text-slate-100">
+                  Terima Cicilan: {payInstTarget.label || payInstTarget.person}
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Progress saat ini:{" "}
+                  <strong className="text-slate-200 font-mono">
+                    {payInstTarget.paidCount}/{payInstTarget.totalMonths} bln
+                  </strong>
+                </p>
+              </div>
+              <form onSubmit={handlePayInstallment} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Nominal Diterima (Rp)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={payInstAmount}
+                    onChange={(e) => setPayInstAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Masuk ke Sumber Dana</label>
+                  <select
+                    value={payInstWalletId}
+                    onChange={(e) => setPayInstWalletId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  >
+                    {wallets
+                      .filter((w) => !w.locked && w.role !== "credit")
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} ({formatRupiah(w.balance)})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={payInstLogTx}
+                    onChange={(e) => setPayInstLogTx(e.target.checked)}
+                    className="rounded border-slate-700 bg-slate-900"
+                  />
+                  <span>Catat pemasukan &amp; tambah saldo dompet</span>
+                </label>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Misal: Cicilan bulan Nov"
+                    value={payInstNote}
+                    onChange={(e) => setPayInstNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayInstTarget(null)}
+                    className="px-3 py-1.5 text-xs text-slate-400"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
+                  >
+                    {actionLoading ? <Spinner className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                    <span>{actionLoading ? "Memproses..." : "Catat Cicilan Masuk"}</span>
                   </button>
                 </div>
               </form>

@@ -29,6 +29,7 @@ import {
   findOpenDebt,
   updateDebt,
   snoozeDebt,
+  recordInstallmentPayment,
   addWishlist,
   findOpenWishlist,
   buyWishlist,
@@ -1096,6 +1097,41 @@ export async function POST(req) {
             : `🔻 *Bayar utang ${debt.person} (${formatRupiah(debt.amount)}) pakai dana mana, Tuan?*`,
         });
         return NextResponse.json({ ok: true, mode: "debt_lunas_pick_wallet" });
+      }
+
+      // 6b. Reminder Action: Terima Cicilan Berjangka 1-Tap
+      if (data.startsWith("inst_pay:")) {
+        const instId = data.replace("inst_pay:", "");
+        const profile = await getUserProfile(cbUserId);
+        const inst = (profile.installments || []).find((x) => x.id === instId && x.status !== "paid");
+        if (!inst) {
+          await answerCallbackQuery(cbId, "Cicilan tidak ditemukan atau sudah lunas");
+          return NextResponse.json({ ok: true });
+        }
+        const wallet = resolveWallet(profile, inst.targetWalletId || "saqu_utama");
+        const res = await recordInstallmentPayment(cbUserId, instId, {
+          walletId: wallet?.id || "",
+          logTx: true,
+        });
+        if (!res?.installment) {
+          await answerCallbackQuery(cbId, "Gagal mencatat cicilan");
+          return NextResponse.json({ ok: true });
+        }
+        await clearInlineKeyboard(cbChatId, cb.message?.message_id);
+        const updated = res.installment;
+        const remaining = Math.max(0, (updated.totalAmount || 0) - (updated.paidAmount || 0));
+        const targetW = (res.profile?.wallets || []).find((w) => w.id === (wallet?.id || inst.targetWalletId));
+        await answerCallbackQuery(cbId, `Cicilan ${updated.paidCount}/${updated.totalMonths} tercatat`);
+        await sendTelegramMessage(
+          cbChatId,
+          `✅ *Cicilan Masuk Tercatat!*\n` +
+            `• *${updated.label || updated.person}*: +*${formatRupiah(res.payAmount)}*\n` +
+            `• Progress: *${updated.paidCount}/${updated.totalMonths} bln*` +
+            (res.isDone ? " *(LUNAS!)*" : ` • Sisa pokok: *${formatRupiah(remaining)}*`) +
+            (targetW ? `\n• Saldo *${targetW.name}*: *${formatRupiah(targetW.balance)}*` : ""),
+          cbThreadId
+        );
+        return NextResponse.json({ ok: true, mode: "inst_paid", instId });
       }
 
       // 7. Reminder Action: Snooze Utang/Piutang

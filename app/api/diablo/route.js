@@ -22,6 +22,10 @@ import {
   deleteDebt,
   adjustDebtAmount,
   simplifyDebts,
+  addInstallment,
+  updateInstallment,
+  deleteInstallment,
+  recordInstallmentPayment,
   addWishlist,
   updateWishlist,
   buyWishlist,
@@ -260,6 +264,48 @@ export async function POST(req) {
 
     if (action === "delete_debt") {
       const updated = await deleteDebt(userId, body.debtId);
+      return NextResponse.json({ ok: true, profile: updated });
+    }
+
+    if (action === "add_installment") {
+      if (!String(body.person || body.label || "").trim() || !(Number(body.totalAmount) > 0)) {
+        return NextResponse.json({ error: "Nama dan total cicilan wajib diisi." }, { status: 400 });
+      }
+      const result = await addInstallment(userId, {
+        person: body.person,
+        label: body.label,
+        totalAmount: body.totalAmount,
+        monthlyAmount: body.monthlyAmount,
+        paidAmount: body.paidAmount,
+        paidCount: body.paidCount,
+        totalMonths: body.totalMonths,
+        dueDay: body.dueDay,
+        nextDueDate: body.nextDueDate,
+        targetWalletId: body.targetWalletId || "",
+        note: body.note || "",
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "update_installment") {
+      const result = await updateInstallment(userId, body.installmentId, body.patch || {});
+      if (!result) return NextResponse.json({ error: "Cicilan tidak ditemukan" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "pay_installment") {
+      const result = await recordInstallmentPayment(userId, body.installmentId, {
+        amount: body.amount,
+        walletId: body.walletId || "",
+        logTx: body.logTx !== false,
+        note: body.note || "",
+      });
+      if (!result) return NextResponse.json({ error: "Cicilan tidak ditemukan atau nominal tidak valid" }, { status: 404 });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "delete_installment") {
+      const updated = await deleteInstallment(userId, body.installmentId);
       return NextResponse.json({ ok: true, profile: updated });
     }
 
