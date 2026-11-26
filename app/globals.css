@@ -157,3 +157,39 @@ input[type="number"] {
   -moz-appearance: textfield !important;
   appearance: textfield !important;
 }
+
+/* Loading Animations: Shimmer Skeleton & Top Sync Bar */
+@keyframes diablo-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(30, 44, 57, 0.72) 25%,
+    rgba(92, 152, 205, 0.14) 50%,
+    rgba(30, 44, 57, 0.72) 75%
+  );
+  background-size: 200% 100%;
+  animation: diablo-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes diablo-top-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.top-loading-bar {
+  width: 30%;
+  background: linear-gradient(90deg, transparent, #66d9ef, #5c98cd, transparent);
+  animation: diablo-top-bar 1.2s ease-in-out infinite;
+}

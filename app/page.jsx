@@ -5,6 +5,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import DiabloAvatar from "@/components/DiabloAvatar";
 import QuickLogModal from "@/components/QuickLogModal";
+import { PageSkeleton, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, formatShortDate } from "@/lib/format";
 import { listAvailablePeriods, computePeriodReport } from "@/lib/period-report";
@@ -32,31 +33,38 @@ export default function HomePage() {
   const { data, loading, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [selectedPeriodKey, setSelectedPeriodKey] = useState("");
+  const [busyTxId, setBusyTxId] = useState(null);
 
   async function handleToggleIntent(txId) {
+    setBusyTxId(txId);
     try {
       const res = await fetch("/api/diablo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "toggle_intent", txId }),
       });
-      if (res.ok) reload();
+      if (res.ok) await reload();
     } catch (e) {
       console.error(e);
+    } finally {
+      setBusyTxId(null);
     }
   }
 
   async function handleDeleteTx(txId) {
     if (!confirm("Hapus transaksi ini? Saldo dompet terkait akan disesuaikan otomatis.")) return;
+    setBusyTxId(txId);
     try {
       const res = await fetch("/api/diablo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "delete_tx", txId }),
       });
-      if (res.ok) reload();
+      if (res.ok) await reload();
     } catch (e) {
       console.error(e);
+    } finally {
+      setBusyTxId(null);
     }
   }
 
@@ -85,9 +93,9 @@ export default function HomePage() {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-fintech-canvas flex flex-col items-center justify-center p-4">
-        <DiabloAvatar className="w-12 h-12 mb-3 animate-pulse" />
-        <p className="text-xs text-slate-400 font-mono">Menyiapkan pundi-pundi Tuan...</p>
+      <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
+        <Nav />
+        <PageSkeleton variant="dashboard" />
       </div>
     );
   }
@@ -665,8 +673,9 @@ export default function HomePage() {
                     <div className="flex items-center gap-3 min-w-0">
                       <button
                         onClick={() => !isIncome && handleToggleIntent(tx.id)}
+                        disabled={isIncome || busyTxId === tx.id}
                         title={isIncome ? "Pemasukan" : "Klik untuk ubah status (NEED / WANT / GIFT / ASSET)"}
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border ${
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border disabled:opacity-60 ${
                           isIncome
                             ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 cursor-default"
                             : tx.intent === "NEED"
@@ -678,7 +687,8 @@ export default function HomePage() {
                             : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border-amber-500/20"
                         }`}
                       >
-                        {isIncome ? "MASUK" : tx.intent}
+                        {busyTxId === tx.id && <Spinner className="w-2.5 h-2.5" />}
+                        <span>{isIncome ? "MASUK" : tx.intent}</span>
                       </button>
                       <div className="min-w-0">
                         <div className="font-medium text-slate-200 truncate">{tx.item}</div>
@@ -704,10 +714,11 @@ export default function HomePage() {
                       </span>
                       <button
                         onClick={() => handleDeleteTx(tx.id)}
+                        disabled={busyTxId === tx.id}
                         title="Hapus transaksi"
-                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition"
+                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 disabled:opacity-100 transition"
                       >
-                        ×
+                        {busyTxId === tx.id ? <Spinner className="w-3 h-3 text-rose-400" /> : "×"}
                       </button>
                     </div>
                   </div>

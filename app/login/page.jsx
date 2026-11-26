@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import DiabloAvatar from "@/components/DiabloAvatar";
+import { DiabloScreenLoader, Spinner } from "@/components/DiabloLoader";
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -10,6 +11,7 @@ function LoginContent() {
   const loggedOut = searchParams.get("logged_out") === "1";
   const [tokenInput, setTokenInput] = useState("");
   const [showManual, setShowManual] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const errorMessage =
     error === "expired"
@@ -150,7 +152,8 @@ function LoginContent() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (tokenInput.trim()) {
+                  if (tokenInput.trim() && !verifying) {
+                    setVerifying(true);
                     window.location.href = `/auth/verify?token=${encodeURIComponent(tokenInput.trim())}`;
                   }
                 }}
@@ -161,13 +164,16 @@ function LoginContent() {
                   placeholder="Paste token di sini..."
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}
-                  className="flex-1 px-3 py-2 text-xs bg-slate-900/90 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-500 font-mono"
+                  disabled={verifying}
+                  className="flex-1 px-3 py-2 text-xs bg-slate-900/90 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-500 font-mono disabled:opacity-60"
                 />
                 <button
                   type="submit"
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg transition"
+                  disabled={verifying || !tokenInput.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-semibold text-slate-200 rounded-lg transition"
                 >
-                  Verifikasi
+                  {verifying && <Spinner className="w-3.5 h-3.5" />}
+                  <span>{verifying ? "Memverifikasi..." : "Verifikasi"}</span>
                 </button>
               </form>
             )}
@@ -185,13 +191,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-sm">
-          Memuat...
-        </div>
-      }
-    >
+    <Suspense fallback={<DiabloScreenLoader subtitle="Memuat halaman masuk..." />}>
       <LoginContent />
     </Suspense>
   );

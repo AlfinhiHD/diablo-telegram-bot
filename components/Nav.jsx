@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import DiabloAvatar from "./DiabloAvatar";
-import { logoutSession } from "@/lib/diablo-client";
+import { Spinner } from "./DiabloLoader";
+import { logoutSession, useDiabloRefreshing } from "@/lib/diablo-client";
 import {
   Home,
   PiggyBank,
@@ -17,6 +18,7 @@ import {
 export default function Nav({ userId, profile, onQuickLog }) {
   const pathname = usePathname();
   const [loggingOut, setLoggingOut] = useState(false);
+  const refreshing = useDiabloRefreshing();
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -104,11 +106,23 @@ export default function Nav({ userId, profile, onQuickLog }) {
               aria-label="Keluar"
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 disabled:opacity-50 whitespace-nowrap shrink-0 transition"
             >
-              <LogOut className="w-3.5 h-3.5 shrink-0" />
+              {loggingOut ? (
+                <Spinner className="w-3.5 h-3.5" />
+              ) : (
+                <LogOut className="w-3.5 h-3.5 shrink-0" />
+              )}
               <span>{loggingOut ? "Keluar..." : "Keluar"}</span>
             </button>
           </div>
         </div>
+        {refreshing && (
+          <div
+            aria-hidden="true"
+            className="absolute bottom-0 inset-x-0 h-[2px] overflow-hidden pointer-events-none"
+          >
+            <div className="h-full top-loading-bar rounded-full" />
+          </div>
+        )}
       </header>
 
       {/* Mobile Floating Bottom Bar */}

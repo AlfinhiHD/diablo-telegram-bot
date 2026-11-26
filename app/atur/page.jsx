@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import DiabloAvatar from "@/components/DiabloAvatar";
+import { PageSkeleton, DiabloScreenLoader, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData, logoutSession } from "@/lib/diablo-client";
 import { formatRupiah } from "@/lib/format";
 import {
@@ -132,6 +133,15 @@ function AturContent() {
 
   const displayName = ownerName || data?.profile?.ownerName || (data?.userId === "1128526190" ? "Alfin" : "Tuan");
   const telegramHandle = data?.profile?.telegramUsername || (data?.userId === "1128526190" ? "nocelestial14" : "");
+
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
+        <Nav />
+        <PageSkeleton variant="atur" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
@@ -512,9 +522,10 @@ function AturContent() {
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-50 text-slate-950 font-bold text-xs transition shadow-lg shadow-accent-500/20"
+              className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-accent-500 hover:bg-accent-400 active:scale-95 disabled:opacity-50 text-slate-950 font-bold text-xs transition shadow-lg shadow-accent-500/20"
             >
-              {saving ? "Menyimpan..." : "Simpan Pengaturan"}
+              {saving && <Spinner className="w-3.5 h-3.5" />}
+              <span>{saving ? "Menyimpan..." : "Simpan Pengaturan"}</span>
             </button>
           </div>
         </form>
@@ -562,7 +573,7 @@ function AturContent() {
               }}
               className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              {loggingOut ? <Spinner className="w-3.5 h-3.5" /> : <LogOut className="w-3.5 h-3.5" />}
               <span>{loggingOut ? "Keluar..." : "Keluar dari Web"}</span>
             </button>
           </div>
@@ -574,13 +585,7 @@ function AturContent() {
 
 export default function AturPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-sm">
-          Memuat...
-        </div>
-      }
-    >
+    <Suspense fallback={<DiabloScreenLoader subtitle="Memuat pengaturan..." />}>
       <AturContent />
     </Suspense>
   );

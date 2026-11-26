@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X, Sparkles, Send, Wallet } from "lucide-react";
+import { Spinner } from "./DiabloLoader";
 
 export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = [] }) {
   const [text, setText] = useState("");
@@ -143,7 +144,10 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 text-xs font-semibold transition shadow-lg shadow-accent-500/20"
             >
               {loading ? (
-                <span>Mencatat...</span>
+                <>
+                  <Spinner className="w-3.5 h-3.5" />
+                  <span>Mencatat...</span>
+                </>
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
+import { PageSkeleton, DiabloScreenLoader, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, groupTransactionsByDate } from "@/lib/format";
 import { listAvailablePeriods, getCycleBounds } from "@/lib/period-report";
@@ -15,13 +16,14 @@ function RiwayatContent() {
   const initialWallet = searchParams.get("wallet") || "ALL";
   const initialPeriod = searchParams.get("period") || "";
 
-  const { data, reload } = useDiabloData();
+  const { data, loading, reload } = useDiabloData();
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [filterWallet, setFilterWallet] = useState(initialWallet);
   const [filterPeriod, setFilterPeriod] = useState(initialPeriod);
   const [filterIntent, setFilterIntent] = useState("ALL"); // ALL, INCOME, NEED, WANT, GIFT, ASSET
   const [searchQuery, setSearchQuery] = useState("");
   const [movingTxId, setMovingTxId] = useState(null);
+  const [busyTxId, setBusyTxId] = useState(null);
 
   useEffect(() => {
     const qW = searchParams.get("wallet");
@@ -31,15 +33,18 @@ function RiwayatContent() {
   }, [searchParams]);
 
   async function handleToggleIntent(txId) {
+    setBusyTxId(txId);
     try {
       const res = await fetch("/api/diablo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "toggle_intent", txId }),
       });
-      if (res.ok) reload();
+      if (res.ok) await reload();
     } catch (e) {
       console.error(e);
+    } finally {
+      setBusyTxId(null);
     }
   }
 
@@ -62,15 +67,18 @@ function RiwayatContent() {
 
   async function handleDeleteTx(txId) {
     if (!confirm("Hapus catatan transaksi ini? Saldo dompet terkait akan disesuaikan otomatis.")) return;
+    setBusyTxId(txId);
     try {
       const res = await fetch("/api/diablo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "delete_tx", txId }),
       });
-      if (res.ok) reload();
+      if (res.ok) await reload();
     } catch (e) {
       console.error(e);
+    } finally {
+      setBusyTxId(null);
     }
   }
 
@@ -128,6 +136,15 @@ function RiwayatContent() {
     .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
 
   const selectedWalletObj = wallets.find((w) => w.id === filterWallet);
+
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
+        <Nav />
+        <PageSkeleton variant="riwayat" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
@@ -342,8 +359,9 @@ function RiwayatContent() {
                           <div className="flex items-center gap-3 min-w-0">
                             <button
                               onClick={() => !isIncome && handleToggleIntent(tx.id)}
+                              disabled={isIncome || busyTxId === tx.id}
                               title={isIncome ? "Pemasukan" : "Klik untuk ubah status (NEED / WANT / GIFT / ASSET)"}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border ${
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition border disabled:opacity-60 ${
                                 isIncome
                                   ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 cursor-default"
                                   : tx.intent === "NEED"
@@ -355,7 +373,8 @@ function RiwayatContent() {
                                   : "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border-amber-500/20"
                               }`}
                             >
-                              {isIncome ? "MASUK" : tx.intent}
+                              {busyTxId === tx.id && <Spinner className="w-2.5 h-2.5" />}
+                              <span>{isIncome ? "MASUK" : tx.intent}</span>
                             </button>
 
                             <div className="min-w-0">
@@ -391,6 +410,9 @@ function RiwayatContent() {
                                         </option>
                                       ))}
                                     </select>
+                                    {movingTxId === tx.id && (
+                                      <Spinner className="w-3 h-3 text-accent-300" />
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -407,10 +429,15 @@ function RiwayatContent() {
                             </span>
                             <button
                               onClick={() => handleDeleteTx(tx.id)}
+                              disabled={busyTxId === tx.id}
                               title="Hapus Transaksi"
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {busyTxId === tx.id ? (
+                                <Spinner className="w-3.5 h-3.5 text-rose-400" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           </div>
                         </div>
@@ -436,13 +463,7 @@ function RiwayatContent() {
 
 export default function RiwayatPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-xs">
-          Memuat riwayat...
-        </div>
-      }
-    >
+    <Suspense fallback={<DiabloScreenLoader subtitle="Memuat riwayat transaksi..." />}>
       <RiwayatContent />
     </Suspense>
   );

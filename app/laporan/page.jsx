@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
-import DiabloAvatar from "@/components/DiabloAvatar";
 import QuickLogModal from "@/components/QuickLogModal";
+import { PageSkeleton, DiabloScreenLoader } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, formatShortDate } from "@/lib/format";
 import { listAvailablePeriods, computePeriodReport } from "@/lib/period-report";
@@ -62,9 +62,9 @@ function LaporanContent() {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-fintech-canvas flex flex-col items-center justify-center p-4">
-        <DiabloAvatar className="w-12 h-12 mb-3 animate-pulse" />
-        <p className="text-xs text-slate-400 font-mono">Menyusun laporan bulanan Tuan...</p>
+      <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
+        <Nav />
+        <PageSkeleton variant="laporan" />
       </div>
     );
   }
@@ -555,13 +555,7 @@ function LaporanContent() {
 
 export default function LaporanPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-fintech-canvas flex items-center justify-center text-slate-400 text-xs">
-          Memuat laporan...
-        </div>
-      }
-    >
+    <Suspense fallback={<DiabloScreenLoader subtitle="Menyusun laporan bulanan..." />}>
       <LaporanContent />
     </Suspense>
   );
