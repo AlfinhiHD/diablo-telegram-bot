@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import Modal from "@/components/Modal";
 import QuickLogModal from "@/components/QuickLogModal";
+import { PaceRing } from "@/components/FinanceCharts";
 import { PageSkeleton, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
+import { normalizeAgent, resolveUserCall } from "@/lib/agent-persona";
 import { formatRupiah, formatShortDate } from "@/lib/format";
 import {
   PiggyBank,
   Plus,
   Trash2,
   TrendingUp,
-  Sparkles,
   CheckCircle,
+  Check,
   Wallet,
   ArrowLeftRight,
   Lock,
@@ -27,11 +30,25 @@ import {
   ShoppingBag,
   ExternalLink,
   ListChecks,
+  Terminal,
 } from "lucide-react";
+
+const HASH_TO_TAB = {
+  "#dompet": "dompet",
+  "#gajian": "gajian",
+  "#tagihan": "tagihan",
+  "#utang": "tagihan",
+  "#cicilan": "cicilan",
+  "#wishlist": "wishlist",
+};
 
 export default function TabunganPage() {
   const { data, loading, reload } = useDiabloData();
+  const agent = normalizeAgent(data?.profile?.agent);
+  const userCall = resolveUserCall(agent, data?.profile?.ownerName);
+  const [mounted, setMounted] = useState(false);
   const [quickLogOpen, setQuickLogOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("dompet");
 
   // Modal Tambah Pos Tabungan
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -44,7 +61,7 @@ export default function TabunganPage() {
   const [topUpPotId, setTopUpPotId] = useState(null);
   const [topUpAmount, setTopUpAmount] = useState("");
 
-  // Modal Transfer Antar Dompet / Bayar SPayLater
+  // Modal Transfer Antar Dompet / Bayar PayLater
   const [transferOpen, setTransferOpen] = useState(false);
   const [trFrom, setTrFrom] = useState("");
   const [trTo, setTrTo] = useState("");
@@ -70,16 +87,16 @@ export default function TabunganPage() {
   const [settleTarget, setSettleTarget] = useState(null);
   const [settleWalletId, setSettleWalletId] = useState("bni");
   const [settleAmount, setSettleAmount] = useState("");
-  const [debtTab, setDebtTab] = useState("open"); // "open" | "paid"
+  const [debtTab, setDebtTab] = useState("open");
 
   // Modal Sesuaikan (Kurangi / Tambah) Utang/Piutang
   const [adjustTarget, setAdjustTarget] = useState(null);
-  const [adjustMode, setAdjustMode] = useState("sub"); // "sub" | "add"
+  const [adjustMode, setAdjustMode] = useState("sub");
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
 
-  // Piutang Cicilan (Berjangka, terpisah dari Utang/Piutang harian)
-  const [instTab, setInstTab] = useState("active"); // "active" | "paid"
+  // Cicilan Berjangka
+  const [instTab, setInstTab] = useState("active");
   const [instModalOpen, setInstModalOpen] = useState(false);
   const [editingInst, setEditingInst] = useState(null);
   const [instPerson, setInstPerson] = useState("");
@@ -96,7 +113,7 @@ export default function TabunganPage() {
   const [payInstLogTx, setPayInstLogTx] = useState(true);
 
   // Wishlist Belanja
-  const [wishlistTab, setWishlistTab] = useState("planned"); // "planned" | "bought"
+  const [wishlistTab, setWishlistTab] = useState("planned");
   const [wishModalOpen, setWishModalOpen] = useState(false);
   const [editingWish, setEditingWish] = useState(null);
   const [wishName, setWishName] = useState("");
@@ -110,11 +127,22 @@ export default function TabunganPage() {
   const [buyWishAmount, setBuyWishAmount] = useState("");
   const [buyWishLogTx, setBuyWishLogTx] = useState(true);
 
-  // Modal Atur Template Bagi Gaji
+  // Modal Template Alokasi Gajian
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [planDraft, setPlanDraft] = useState([]);
 
   const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    function syncFromHash() {
+      const next = HASH_TO_TAB[window.location.hash];
+      if (next) setActiveSection(next);
+    }
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
 
   const wallets = data?.profile?.wallets || [];
   const pots = data?.profile?.savingsPots || [];
@@ -182,6 +210,15 @@ export default function TabunganPage() {
   const totalSaved = pots.reduce((acc, p) => acc + (Number(p.saved) || 0), 0);
   const totalTarget = pots.reduce((acc, p) => acc + (Number(p.target) || 0), 0);
   const totalProgress = totalTarget > 0 ? Math.min(100, Math.round((totalSaved / totalTarget) * 100)) : 0;
+
+  const pendingPaydayCount = Math.max(
+    0,
+    (paydayChecklist?.totalCount || 0) - (paydayChecklist?.doneCount || 0)
+  );
+  const unpaidBillsCount = upcomingBills.filter(
+    (b) => b.amount > 0 && !b.paidInCurrentCycle && b.urgency !== "INACTIVE"
+  ).length;
+  const attentionCount = openDebts.length + activeInstallments.length + pendingPaydayCount;
 
   function openAuditModal() {
     const init = {};
@@ -562,7 +599,8 @@ export default function TabunganPage() {
     try {
       const totalNum = Math.max(0, Number(instTotal) || 0);
       const monthlyNum = Math.max(0, Number(instMonthly) || 0);
-      const computedMonths = monthlyNum > 0 && totalNum > 0 ? Math.max(1, Math.ceil(totalNum / monthlyNum)) : 1;
+      const computedMonths =
+        monthlyNum > 0 && totalNum > 0 ? Math.max(1, Math.ceil(totalNum / monthlyNum)) : 1;
       const payload = editingInst
         ? {
             action: "update_installment",
@@ -648,7 +686,7 @@ export default function TabunganPage() {
   }
 
   async function handleDeleteInstallment(instId) {
-    if (!confirm("Hapus catatan piutang cicilan ini?")) return;
+    if (!confirm("Hapus catatan cicilan berjangka ini?")) return;
     const res = await fetch("/api/diablo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -658,7 +696,7 @@ export default function TabunganPage() {
   }
 
   async function handleDeleteWishlist(wishlistId) {
-    if (!confirm("Hapus item ini dari wishlist?")) return;
+    if (!confirm("Hapus item ini dari daftar incaran?")) return;
     const res = await fetch("/api/diablo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -740,7 +778,7 @@ export default function TabunganPage() {
     }
   }
 
-  if (loading && !data) {
+  if (!mounted || (loading && !data)) {
     return (
       <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
         <Nav />
@@ -753,2109 +791,1867 @@ export default function TabunganPage() {
     .filter((w) => !w.locked)
     .reduce((acc, w) => acc + ((Number(auditInputs[w.id]) || 0) - (Number(w.balance) || 0)), 0);
 
+  const sectionTabs = [
+    {
+      key: "dompet",
+      label: "Dompet & Pos",
+      icon: Wallet,
+      badge: wallets.length + pots.length,
+    },
+    {
+      key: "gajian",
+      label: "Checklist Bagi Gaji",
+      icon: ListChecks,
+      badge:
+        paydayChecklist?.totalCount > 0
+          ? `${paydayChecklist.doneCount}/${paydayChecklist.totalCount}`
+          : null,
+    },
+    {
+      key: "tagihan",
+      label: "Tagihan & Utang",
+      icon: Receipt,
+      badge: unpaidBillsCount + openDebts.length > 0 ? unpaidBillsCount + openDebts.length : null,
+    },
+    {
+      key: "cicilan",
+      label: "Piutang Cicilan",
+      icon: Clock,
+      badge: activeInstallments.length > 0 ? activeInstallments.length : null,
+    },
+    {
+      key: "wishlist",
+      label: "Wishlist Belanja",
+      icon: ShoppingBag,
+      badge: plannedWishlists.length > 0 ? plannedWishlists.length : null,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-fintech-canvas pb-24 sm:pb-12 text-slate-100">
       <Nav userId={data?.userId} profile={data?.profile} onQuickLog={() => setQuickLogOpen(true)} />
 
-      <main className="max-w-4xl mx-auto px-4 pt-6 space-y-6">
-        {/* Header Title */}
+      <main className="max-w-4xl mx-auto px-4 pt-6 space-y-5">
+        {/* Header Title & Top Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold font-heading text-slate-100">
               Pos Tabungan Fleksibel
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Sumber Dana, Audit Surplus/Gap, Reminder Tagihan Tetap, dan Utang / Piutang
+              Dompet, alokasi gajian, tagihan, utang, dan target tabungan.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {wallets.length > 0 && (
               <button
+                type="button"
                 onClick={openAuditModal}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition border border-slate-700"
+                className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] text-slate-200 font-semibold text-xs border border-[var(--border-default)] pressable"
               >
-                <Scale className="w-3.5 h-3.5 text-amber-400" />
+                <Scale className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                 <span>Audit Saldo</span>
               </button>
             )}
             {wallets.length >= 2 && (
               <button
+                type="button"
                 onClick={() => {
                   setTrFrom(wallets[0]?.id || "");
                   setTrTo(wallets[1]?.id || "");
                   setTransferOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition border border-slate-700"
+                className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] text-slate-200 font-semibold text-xs border border-[var(--border-default)] pressable"
               >
-                <ArrowLeftRight className="w-3.5 h-3.5 text-accent-300" />
-                <span>Pindah / Bayar PL</span>
+                <ArrowLeftRight className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                <span>Pindah Dana</span>
               </button>
             )}
             <button
+              type="button"
               onClick={() => setIsAddOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition shadow-lg shadow-accent-500/20"
+              className="min-h-[38px] inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-accent-500 hover:bg-accent-400 text-[var(--cta-ink)] font-semibold text-xs btn-primary-diablo pressable"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden="true" />
               <span>Tambah Pos</span>
             </button>
           </div>
         </div>
 
-        {/* SUMBER DANA / DOMPET */}
-        {wallets.length > 0 && (
-          <section className="bento-card rounded-2xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-accent-300" />
-                <span>Sumber Dana & PayLater</span>
-              </h2>
-              <span className="text-xs font-mono text-emerald-400 font-bold">
-                Bersih: {formatRupiah(data?.analytics?.walletSummary?.netWorthTotal ?? 0)}
+        {/* Obsidian Summary Vault */}
+        <section
+          data-tone="accent"
+          className="hero-vault rounded-2xl p-5 grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--border-subtle)]"
+        >
+          <div className="pb-4 md:pb-0 md:pr-6 flex flex-col justify-center">
+            <span className="text-[11px] text-slate-400 block">Aset Bersih</span>
+            <strong className="text-xl font-bold font-heading tabular-nums text-emerald-400 mt-0.5 block">
+              {formatRupiah(data?.analytics?.walletSummary?.netWorthTotal ?? 0)}
+            </strong>
+            <span className="text-[11px] text-slate-400 mt-0.5 block">
+              {wallets.length} sumber dana tercatat
+            </span>
+          </div>
+
+          <div className="py-4 md:py-0 md:px-6 flex items-center justify-between gap-4">
+            <div className="min-w-0 space-y-0.5">
+              <span className="text-[11px] text-slate-400 block">Pos Tabungan</span>
+              <div className="text-lg font-bold font-heading tabular-nums text-slate-100">
+                {formatRupiah(totalSaved)}
+              </div>
+              <span className="text-[11px] text-slate-400 block">
+                Target: {formatRupiah(totalTarget)}
               </span>
             </div>
+            <PaceRing
+              size={58}
+              strokeWidth={5.5}
+              percent={totalProgress}
+              tone="accent"
+              centerValue={`${totalProgress}%`}
+            />
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {wallets.map((w) => {
-                const isCredit = w.role === "credit";
-                const hasDebt = isCredit && w.balance < 0;
-                return (
-                  <Link
-                    key={w.id}
-                    href={`/riwayat?wallet=${encodeURIComponent(w.id)}`}
-                    className={`p-3.5 rounded-xl border transition flex items-center justify-between gap-2 group ${
-                      hasDebt
-                        ? "bg-rose-500/[0.06] border-rose-500/30 hover:border-rose-400/50"
-                        : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1 pr-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-xs font-semibold text-slate-200 truncate" title={w.name}>
-                          {w.name}
-                        </span>
-                        {w.locked && <Lock className="w-3 h-3 text-amber-400 shrink-0" />}
-                        {isCredit && <CreditCard className="w-3 h-3 text-rose-400 shrink-0" />}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {w.locked
-                          ? "Dana Darurat (Terkunci)"
-                          : isCredit
-                          ? hasDebt
-                            ? "Tagihan Berjalan"
-                            : "PayLater (Lunas)"
-                          : w.role === "daily"
-                          ? "Dana Harian"
-                          : "Simpanan"}
-                      </div>
-                    </div>
-                    <div className="text-right flex items-center gap-1 shrink-0">
-                      <span
-                        className={`text-[13px] xl:text-sm font-bold font-mono-num whitespace-nowrap tabular-nums ${
-                          hasDebt ? "text-rose-400" : w.locked ? "text-amber-300" : "text-emerald-400"
-                        }`}
-                      >
-                        {formatRupiah(w.balance)}
-                      </span>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-300 shrink-0" />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        )}
+          <div className="pt-4 md:pt-0 md:pl-6 flex flex-col justify-center">
+            <span className="text-[11px] text-slate-400 block">Perlu Perhatian</span>
+            <strong className="text-xl font-bold font-heading tabular-nums text-slate-100 mt-0.5 block">
+              {attentionCount} item
+            </strong>
+            <span className="text-[11px] text-slate-400 mt-0.5 block">
+              {openDebts.length} utang/piutang · {activeInstallments.length} cicilan · {pendingPaydayCount} gajian
+            </span>
+          </div>
+        </section>
 
-        {/* CHECKLIST BAGI GAJI (PAYDAY SPLIT TO-DO) */}
-        <section id="gajian" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <ListChecks className="w-4 h-4 text-emerald-400" />
-                <span>Checklist Bagi Gaji</span>
-                {paydayChecklist?.totalCount > 0 && (
+        {/* 5-Tab Workspace Navigation Bar */}
+        <div
+          role="tablist"
+          aria-label="Bagian tabungan dan kewajiban"
+          className="flex flex-wrap items-center gap-1.5 bg-[var(--bg-inset)] p-1.5 rounded-2xl border border-[var(--border-subtle)]"
+        >
+          {sectionTabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeSection === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveSection(tab.key)}
+                className={`min-h-[40px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition pressable ${
+                  active
+                    ? "bg-[var(--bg-active)] text-slate-100 border border-accent-500/40 shadow-xs"
+                    : "text-slate-400 hover:text-slate-100 border border-transparent hover:bg-[var(--hover-tint)]"
+                }`}
+              >
+                <Icon
+                  className={`w-3.5 h-3.5 shrink-0 ${active ? "text-accent-300" : "text-slate-400"}`}
+                  aria-hidden="true"
+                />
+                <span>{tab.label}</span>
+                {tab.badge !== null && (
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      paydayChecklist.allDone
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                        : "bg-accent-500/15 text-accent-300 border border-accent-500/30"
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-mono-num ${
+                      active ? "bg-accent-500/20 text-accent-200" : "bg-[var(--track-bg)] text-slate-400"
                     }`}
                   >
-                    {paydayChecklist.doneCount}/{paydayChecklist.totalCount} selesai
+                    {tab.badge}
                   </span>
                 )}
-              </h2>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Panduan transfer &amp; bayar tiap gajian ({paydayChecklist?.periodShort || "Siklus Ini"} • {paydayChecklist?.periodRange || "-"}) — centang setelah transfer agar saldo ikut terpindah
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={openPlanModal}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
-            >
-              <Pencil className="w-3 h-3 text-accent-300" />
-              Atur Template
-            </button>
-          </div>
-
-          {!paydayChecklist || paydayChecklist.items.length === 0 ? (
-            <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-xs text-slate-400 flex items-center justify-between gap-3">
-              <span>Belum ada template bagi gaji. Atur urutan transfer tabungan, kos, RDPU &amp; investasi tiap gajian.</span>
-              <button
-                type="button"
-                onClick={openPlanModal}
-                className="px-3 py-1.5 rounded-lg bg-accent-500 text-slate-950 font-bold text-[11px] shrink-0"
-              >
-                Buat Template
               </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">Gaji Rutinan</div>
-                  <div className="font-mono font-bold text-slate-100 mt-0.5">
-                    {formatRupiah(paydayChecklist.monthlyIncome)}
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">Total Dialokasikan</div>
-                  <div className="font-mono font-bold text-accent-300 mt-0.5">
-                    {formatRupiah(paydayChecklist.totalPlanned)}
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/25">
-                  <div className="text-[10px] text-emerald-300">Sisa Dana Harian</div>
-                  <div className="font-mono font-bold text-emerald-400 mt-0.5">
-                    {formatRupiah(paydayChecklist.remainingForDaily)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {paydayChecklist.items.map((it) => (
-                  <div
-                    key={it.id}
-                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs ${
-                      it.done
-                        ? "bg-emerald-500/[0.06] border-emerald-500/30"
-                        : it.auto
-                        ? "bg-amber-500/[0.06] border-amber-500/30"
-                        : "bg-slate-900/65 border-slate-800"
-                    }`}
-                  >
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`font-semibold ${it.done ? "line-through text-slate-400" : "text-slate-100"}`}>
-                          {it.label}
-                        </span>
-                        {it.type === "transfer" && it.fromWalletName && it.toWalletName && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
-                            {it.fromWalletName} → {it.toWalletName}
-                          </span>
-                        )}
-                        {it.type === "bill" && it.fromWalletName && (
-                          <span className="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-slate-300 font-medium">
-                            via {it.fromWalletName}
-                          </span>
-                        )}
-                        {it.auto && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold">
-                            Tagihan Berjalan
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span className="font-mono font-bold text-slate-200">{formatRupiah(it.amount)}</span>
-                        {it.note && <span className="text-slate-400">• {it.note}</span>}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {it.done ? (
-                        <>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                            <CheckCircle className="w-3 h-3" />
-                            Selesai
-                          </span>
-                          {!it.auto && (
-                            <button
-                              type="button"
-                              disabled={actionLoading}
-                              onClick={() => handleUncheckPaydayStep(it.id)}
-                              className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 disabled:opacity-50 px-1.5 py-1"
-                            >
-                              {actionLoading && <Spinner className="w-2.5 h-2.5" />}
-                              Batal
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            disabled={actionLoading}
-                            onClick={() => handleCompletePaydayStep(it.id, true)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 disabled:opacity-50 text-accent-300 border border-accent-500/30 text-[10px] font-semibold transition"
-                          >
-                            {actionLoading ? (
-                              <Spinner className="w-3 h-3" />
-                            ) : (
-                              <CheckCircle className="w-3 h-3" />
-                            )}
-                            {it.type === "bill" ? "Bayar & Centang" : "Transfer & Centang"}
-                          </button>
-                          {!it.auto && (
-                            <button
-                              type="button"
-                              disabled={actionLoading}
-                              onClick={() => handleCompletePaydayStep(it.id, false)}
-                              title="Tandai selesai tanpa ubah saldo dompet"
-                              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-[10px] font-medium transition"
-                            >
-                              Centang saja
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {paydayChecklist.nearestWishlist && (
-                <div className="text-[11px] text-slate-400 pt-1 flex items-center justify-between gap-2 flex-wrap">
-                  <span>
-                    🛍️ Wishlist terdekat:{" "}
-                    <strong className="text-slate-200">{paydayChecklist.nearestWishlist.name}</strong> (
-                    <span className="font-mono text-accent-300">
-                      {formatRupiah(paydayChecklist.nearestWishlist.price)}
-                    </span>
-                    )
-                  </span>
-                  <a href="#wishlist" className="text-accent-300 hover:text-accent-200 font-semibold">
-                    Lihat Wishlist →
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* TAGIHAN TETAP & REMINDER JADWAL */}
-        <section id="tagihan" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Bell className="w-4 h-4 text-amber-400" />
-                <span>Tagihan Tetap & Jadwal Reminder</span>
-              </h2>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Otomatis kirim pengingat ke Telegram tiap pagi jika ada tagihan dekat jatuh tempo atau utang macet
-              </p>
-            </div>
-            <Link href="/atur" className="text-[11px] text-accent-300 hover:text-accent-200 font-semibold">
-              Edit di Atur →
-            </Link>
-          </div>
-
-          {upcomingBills.length === 0 ? (
-            <p className="text-xs text-slate-500">Belum ada tagihan tetap. Tambahkan di halaman Atur.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {upcomingBills.map((b) => (
-                <div
-                  key={b.id}
-                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
-                    b.paidInCurrentCycle
-                      ? "bg-emerald-500/[0.06] border-emerald-500/30"
-                      : b.urgency === "OVERDUE" || b.urgency === "TODAY"
-                      ? "bg-rose-500/[0.06] border-rose-500/30"
-                      : b.urgency === "SOON"
-                      ? "bg-amber-500/[0.06] border-amber-500/30"
-                      : "bg-slate-900/60 border-slate-800"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-semibold text-slate-200 truncate">{b.name}</span>
-                      {b.paidInCurrentCycle && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0 whitespace-nowrap">
-                          ✓ Sudah Dibayar{b.lastPaidLabel ? ` (${b.lastPaidLabel})` : ""}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono font-semibold text-slate-200">
-                        {b.amount > 0 ? `${formatRupiah(b.amount)}/bln` : "Lunas"}
-                      </span>
-                      {b.nextDueDate && (
-                        <>
-                          <span>•</span>
-                          <span>Jatuh tempo {b.nextDueDate}</span>
-                        </>
-                      )}
-                      {!b.paidInCurrentCycle && b.lastPaidLabel && (
-                        <>
-                          <span>•</span>
-                          <span className="text-slate-500">Terakhir bayar {b.lastPaidLabel}</span>
-                        </>
-                      )}
-                      <span
-                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                          b.paidInCurrentCycle
-                            ? "bg-emerald-500/15 text-emerald-300"
-                            : b.urgency === "OVERDUE" || b.urgency === "TODAY"
-                            ? "bg-rose-500/20 text-rose-300"
-                            : b.urgency === "SOON"
-                            ? "bg-amber-500/20 text-amber-300"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {b.dueLabel}
-                      </span>
-                    </div>
-                  </div>
-                  {b.amount > 0 && b.urgency !== "INACTIVE" && (
-                    b.paidInCurrentCycle ? (
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold whitespace-nowrap">
-                          ✓ Lunas
-                        </span>
-                        <button
-                          onClick={() => {
-                            setPayBillTarget(b);
-                            setPayBillAmount(String(b.dueAmount || b.amount));
-                            setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                          }}
-                          className="text-[9px] text-slate-500 hover:text-slate-300 transition whitespace-nowrap"
-                        >
-                          Bayar lagi
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setPayBillTarget(b);
-                          setPayBillAmount(String(b.dueAmount || b.amount));
-                          setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[10px] font-semibold shrink-0 transition"
-                      >
-                        Tandai Bayar
-                      </button>
-                    )
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* UTANG & PIUTANG */}
-        <section id="utang" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-amber-400" />
-              <span>Catatan Utang & Piutang</span>
-            </h2>
-            <button
-              onClick={() => setDebtModalOpen(true)}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5 text-accent-300" />
-              Catat Utang/Piutang
-            </button>
-          </div>
-
-          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setDebtTab("open")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                debtTab === "open"
-                  ? "bg-accent-500 text-slate-950 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <span>Belum Dibayar</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  debtTab === "open" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {openDebts.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDebtTab("paid")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                debtTab === "paid"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 border border-transparent"
-              }`}
-            >
-              <CheckCircle className="w-3 h-3" />
-              <span>Sudah Dibayar</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  debtTab === "paid" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {paidDebts.length}
-              </span>
-            </button>
-          </div>
-
-          {debtTab === "open" ? (
-            <div className="space-y-4">
-              {simplifiableGroups.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-amber-500/[0.07] border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="text-xs font-bold text-amber-300">
-                      Bisa Disederhanakan (Impas)
-                    </div>
-                    <div className="space-y-0.5 text-xs font-semibold text-slate-100 leading-relaxed">
-                      {simplifiableGroups.map((g) => (
-                        <div key={g.person}>
-                          {g.hasBoth ? (
-                            g.net > 0 ? (
-                              <>
-                                <strong>{g.person}</strong>: Piutang {formatRupiah(g.piutangTotal)} − Utang {formatRupiah(g.utangTotal)} ={" "}
-                                <strong className="text-emerald-300">Sisa Piutang {formatRupiah(g.net)}</strong>
-                              </>
-                            ) : g.net < 0 ? (
-                              <>
-                                <strong>{g.person}</strong>: Utang {formatRupiah(g.utangTotal)} − Piutang {formatRupiah(g.piutangTotal)} ={" "}
-                                <strong className="text-rose-300">Sisa Utang {formatRupiah(Math.abs(g.net))}</strong>
-                              </>
-                            ) : (
-                              <>
-                                <strong>{g.person}</strong>: Piutang {formatRupiah(g.piutangTotal)} − Utang {formatRupiah(g.utangTotal)} ={" "}
-                                <strong className="text-emerald-300">Impas (Rp 0)</strong>
-                              </>
-                            )
-                          ) : (
-                            <>
-                              <strong>{g.person}</strong>: Gabung {g.count} catatan →{" "}
-                              <strong className="text-accent-300">
-                                {g.piutangTotal > 0 ? `Piutang ${formatRupiah(g.piutangTotal)}` : `Utang ${formatRupiah(g.utangTotal)}`}
-                              </strong>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSimplifyDebts}
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs shrink-0 transition"
-                  >
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Memproses..." : "Sederhanakan"}</span>
-                  </button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  {
-                    key: "utang",
-                    title: "Utang Tuan",
-                    list: utangList,
-                    boxClass: "bg-rose-500/[0.04] border-rose-500/20",
-                    titleClass: "text-rose-300",
-                    totalClass: "text-rose-400",
-                    amtClass: "text-rose-300",
-                    emptyText: "Tidak ada utang yang belum dibayar.",
-                  },
-                  {
-                    key: "piutang",
-                    title: "Piutang / Uang di Orang",
-                    list: piutangList,
-                    boxClass: "bg-emerald-500/[0.04] border-emerald-500/20",
-                    titleClass: "text-emerald-300",
-                    totalClass: "text-emerald-400",
-                    amtClass: "text-emerald-300",
-                    emptyText: "Tidak ada piutang yang belum dibayar.",
-                  },
-                ].map((col) => (
-                  <div key={col.key} className={`p-4 rounded-xl border space-y-2.5 ${col.boxClass}`}>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className={`font-semibold ${col.titleClass}`}>
-                        {col.title} ({col.list.length})
-                      </span>
-                      <span className={`font-mono font-bold ${col.totalClass}`}>
-                        {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                      </span>
-                    </div>
-                    {col.list.length === 0 ? (
-                      <p className="text-[11px] text-slate-500">{col.emptyText}</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {col.list.map((d) => (
-                          <div key={d.id} className="p-3 rounded-lg bg-slate-900/75 border border-slate-800 space-y-1.5 text-xs">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="font-bold text-slate-100 text-[13px] truncate">{d.person}</div>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                  <span className={`font-bold font-mono text-xs ${col.amtClass}`}>
-                                    {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
-                                  </span>
-                                  {d.ageDays > 0 && <span className="text-[10px] text-slate-400">• {d.ageDays}h</span>}
-                                  {d.isSnoozed && <span className="text-[10px] text-amber-400 font-semibold">• snooze</span>}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSnoozeDebt(d.id)}
-                                  title="Tunda reminder 3 hari"
-                                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-300"
-                                >
-                                  <Clock className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAdjustTarget(d);
-                                    setAdjustMode("sub");
-                                    setAdjustAmount("");
-                                    setAdjustReason("");
-                                  }}
-                                  title="Kurangi / Tambah nominal"
-                                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-accent-300"
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSettleTarget(d);
-                                    setSettleAmount(d.amount ? String(d.amount) : "");
-                                    setSettleWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
-                                  }}
-                                  title="Tandai sudah dibayar / cicil"
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-500/15 hover:bg-accent-500/25 text-accent-300 border border-accent-500/30 text-[10px] font-semibold transition"
-                                >
-                                  <CheckCircle className="w-3 h-3" />
-                                  Tandai Lunas
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDebt(d.id)}
-                                  title="Hapus catatan"
-                                  className="p-1 text-slate-500 hover:text-rose-400"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                            {d.note && (
-                              <div className="pt-1.5 border-t border-slate-800/70 text-[11px] font-semibold text-slate-200 leading-relaxed whitespace-normal break-words">
-                                {d.note}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                {
-                  key: "paid-utang",
-                  title: "Utang Sudah Dibayar",
-                  list: paidUtangList,
-                  emptyText: "Belum ada riwayat utang yang sudah dibayar.",
-                },
-                {
-                  key: "paid-piutang",
-                  title: "Piutang Sudah Dibayar",
-                  list: paidPiutangList,
-                  emptyText: "Belum ada riwayat piutang yang sudah dibayar.",
-                },
-              ].map((col) => (
-                <div key={col.key} className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-300">
-                      {col.title} ({col.list.length})
-                    </span>
-                    <span className="font-mono text-slate-300 font-bold">
-                      {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                    </span>
-                  </div>
-                  {col.list.length === 0 ? (
-                    <p className="text-[11px] text-slate-500">{col.emptyText}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {col.list.map((d) => {
-                        const wName = d.targetWalletId ? wallets.find((w) => w.id === d.targetWalletId)?.name : "";
-                        return (
-                          <div key={d.id} className="p-3 rounded-lg bg-slate-900/75 border border-slate-800/80 space-y-1.5 text-xs">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="font-bold text-slate-200 text-[13px] truncate">{d.person}</div>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                  <span className="font-bold font-mono text-xs text-slate-200">
-                                    {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
-                                  </span>
-                                  {d.paidAt && <span className="text-[10px] text-slate-400">• {formatShortDate(d.paidAt, false)}</span>}
-                                  {wName && <span className="text-[10px] text-slate-400">• {wName}</span>}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 text-[10px] font-semibold">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Lunas
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDebt(d.id)}
-                                  title="Hapus riwayat"
-                                  className="p-1 text-slate-500 hover:text-rose-400"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                            {d.note && (
-                              <div className="pt-1.5 border-t border-slate-800/70 text-[11px] font-semibold text-slate-300 leading-relaxed whitespace-normal break-words">
-                                {d.note}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* PIUTANG CICILAN BERJANGKA (TERPISAH DARI UTANG HARIAN) */}
-        <section id="cicilan" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-400" />
-                <span>Piutang Cicilan (Berjangka)</span>
-              </h2>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Terpisah dari utang harian • jatuh tempo bulanan otomatis diingatkan di Telegram
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {totalInstallmentRemaining > 0 && (
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  Sisa: {formatRupiah(totalInstallmentRemaining)}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={openNewInstModal}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5 text-accent-300" />
-                Tambah Cicilan
-              </button>
-            </div>
-          </div>
-
-          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setInstTab("active")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                instTab === "active"
-                  ? "bg-accent-500 text-slate-950 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <span>Berjalan</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  instTab === "active" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {activeInstallments.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setInstTab("paid")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                instTab === "paid"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 border border-transparent"
-              }`}
-            >
-              <CheckCircle className="w-3 h-3" />
-              <span>Lunas</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  instTab === "paid" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {paidInstallments.length}
-              </span>
-            </button>
-          </div>
-
-          {instTab === "active" ? (
-            activeInstallments.length === 0 ? (
-              <p className="text-xs text-slate-500">Belum ada piutang cicilan berjangka yang aktif.</p>
-            ) : (
-              <div className="space-y-3">
-                {activeInstallments.map((inst) => {
-                  const totalAmt = Number(inst.totalAmount) || 0;
-                  const paidAmt = Number(inst.paidAmount) || 0;
-                  const remaining = Math.max(0, totalAmt - paidAmt);
-                  const pct = totalAmt > 0 ? Math.min(100, Math.round((paidAmt / totalAmt) * 100)) : 0;
-                  const targetW = wallets.find((w) => w.id === inst.targetWalletId);
-                  const lastHist = Array.isArray(inst.history) && inst.history.length > 0
-                    ? inst.history[inst.history.length - 1]
-                    : null;
-                  const urgencyClass =
-                    inst.urgency === "OVERDUE" || inst.urgency === "TODAY"
-                      ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
-                      : inst.urgency === "SOON"
-                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
-                      : "bg-slate-800 text-slate-300 border-slate-700";
-
-                  return (
-                    <div
-                      key={inst.id}
-                      className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3 text-xs"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-slate-100">
-                              {inst.label || `Cicilan ${inst.person}`}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full bg-accent-500/15 text-accent-300 border border-accent-500/30 text-[10px] font-semibold">
-                              {inst.person}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${urgencyClass}`}>
-                              Tgl {inst.dueDay} {inst.dueLabel ? `• ${inst.dueLabel}` : ""}
-                            </span>
-                            {targetW && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-medium">
-                                → {targetW.name}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300">
-                            <span>
-                              Cicilan:{" "}
-                              <strong className="font-mono text-emerald-400">
-                                {formatRupiah(inst.monthlyAmount)}/bln
-                              </strong>
-                            </span>
-                            <span className="text-slate-600">•</span>
-                            <span>
-                              Sisa:{" "}
-                              <strong className="font-mono text-slate-100">
-                                {formatRupiah(remaining)}
-                              </strong>{" "}
-                              <span className="text-slate-500">/ {formatRupiah(totalAmt)}</span>
-                            </span>
-                            {inst.nextDueDate && (
-                              <>
-                                <span className="text-slate-600">•</span>
-                                <span className="text-slate-400">Jatuh tempo {inst.nextDueDate}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openPayInstModal(inst)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-300 border border-accent-500/30 text-[11px] font-semibold transition"
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            <span>Terima Cicilan</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEditInstModal(inst)}
-                            title="Edit cicilan"
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-accent-300 transition"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteInstallment(inst.id)}
-                            title="Hapus cicilan"
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>
-                            Progress: <strong className="text-slate-200 font-mono">{inst.paidCount}/{inst.totalMonths} bln</strong> • {pct}%
-                          </span>
-                          <span className="font-mono text-emerald-400">
-                            Masuk: {formatRupiah(paidAmt)}
-                          </span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-accent-500 to-emerald-400 transition-all duration-300"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {(inst.note || lastHist) && (
-                        <div className="pt-1.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-                          <span>{inst.note || ""}</span>
-                          {lastHist && (
-                            <span className="text-emerald-300/90 font-mono">
-                              Terakhir masuk {formatShortDate(lastHist.paidAt, false)}: +{formatRupiah(lastHist.amount)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          ) : paidInstallments.length === 0 ? (
-            <p className="text-xs text-slate-500">Belum ada piutang cicilan yang lunas.</p>
-          ) : (
-            <div className="space-y-2">
-              {paidInstallments.map((inst) => (
-                <div
-                  key={inst.id}
-                  className="p-3 rounded-xl bg-emerald-500/[0.04] border border-emerald-500/20 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div>
-                    <div className="font-bold text-slate-200">
-                      {inst.label || `Cicilan ${inst.person}`} ({inst.paidCount}/{inst.totalMonths} bln)
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      Total diterima: <span className="font-mono text-emerald-300">{formatRupiah(inst.paidAmount)}</span>
-                      {inst.paidAt && ` • Lunas ${formatShortDate(inst.paidAt, false)}`}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteInstallment(inst.id)}
-                    title="Hapus riwayat"
-                    className="p-1 text-slate-500 hover:text-rose-400"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* WISHLIST BELANJA */}
-        <section id="wishlist" className="bento-card rounded-2xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-accent-300" />
-                <span>Wishlist Belanja</span>
-              </h2>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Daftar barang incaran + link — bisa dicek kelayakannya oleh Diablo AI sebelum checkout
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {plannedWishlists.length > 0 && (
-                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-accent-500/15 text-accent-300 border border-accent-500/30">
-                  Total: {formatRupiah(totalWishlistPlanned)}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={openNewWishModal}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5 text-accent-300" />
-                Tambah Wishlist
-              </button>
-            </div>
-          </div>
-
-          <div className="inline-flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setWishlistTab("planned")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                wishlistTab === "planned"
-                  ? "bg-accent-500 text-slate-950 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <span>Direncanakan</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  wishlistTab === "planned" ? "bg-slate-950/20 text-slate-950" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {plannedWishlists.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setWishlistTab("bought")}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 ${
-                wishlistTab === "bought"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 border border-transparent"
-              }`}
-            >
-              <CheckCircle className="w-3 h-3" />
-              <span>Sudah Dibeli</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                  wishlistTab === "bought" ? "bg-emerald-500/20 text-emerald-200" : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {boughtWishlists.length}
-              </span>
-            </button>
-          </div>
-
-          {wishlistTab === "planned" ? (
-            plannedWishlists.length === 0 ? (
-              <p className="text-xs text-slate-500 py-2">
-                Belum ada wishlist. Klik &ldquo;Tambah Wishlist&rdquo; atau ketik <code className="px-1 py-0.5 rounded bg-slate-900 text-slate-300 font-mono text-[10px]">tambah wishlist ...</code> di Telegram.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {plannedWishlists.map((w) => {
-                  const pct = w.price > 0 ? Math.min(100, Math.round(((w.saved || 0) / w.price) * 100)) : 0;
-                  return (
-                    <div key={w.id} className="p-3.5 rounded-xl bg-slate-900/65 border border-slate-800 space-y-2.5 text-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-100 text-[13px] truncate">{w.name}</span>
-                            <span
-                              className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
-                                w.priority === "high"
-                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                                  : w.priority === "low"
-                                  ? "bg-slate-800 text-slate-400"
-                                  : "bg-accent-500/15 text-accent-300 border border-accent-500/25"
-                              }`}
-                            >
-                              {w.priority === "high" ? "Prioritas" : w.priority === "low" ? "Santai" : "Sedang"}
-                            </span>
-                          </div>
-                          <div className="font-mono font-bold text-sm text-emerald-400 mt-1">
-                            {w.price > 0 ? formatRupiah(w.price) : "Harga belum diisi"}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openEditWishModal(w)}
-                            title="Edit wishlist"
-                            className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-accent-300"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBuyWishTarget(w);
-                              setBuyWishAmount(w.price ? String(w.price) : "");
-                              setBuyWishWalletId(wallets.find((x) => !x.locked && x.role !== "credit")?.id || "bni");
-                              setBuyWishLogTx(true);
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold transition"
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            Beli
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteWishlist(w.id)}
-                            title="Hapus wishlist"
-                            className="p-1 text-slate-500 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {w.saved > 0 && w.price > 0 && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] text-slate-400">
-                            <span>Terkumpul {formatRupiah(w.saved)}</span>
-                            <span className="font-mono text-accent-300">{pct}%</span>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                            <div style={{ width: `${pct}%` }} className="h-full bg-accent-500 rounded-full" />
-                          </div>
-                        </div>
-                      )}
-
-                      {(w.url || w.note) && (
-                        <div className="pt-1.5 border-t border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                          {w.note ? <span className="text-slate-400 truncate">{w.note}</span> : <span />}
-                          {w.url && /^https?:\/\//i.test(w.url) && (
-                            <a
-                              href={w.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-accent-300 hover:text-accent-200 font-semibold shrink-0"
-                            >
-                              <span>Buka Link</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          ) : boughtWishlists.length === 0 ? (
-            <p className="text-xs text-slate-500 py-2">Belum ada wishlist yang dibeli.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {boughtWishlists.map((w) => (
-                <div key={w.id} className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 flex items-center justify-between gap-2 text-xs">
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-200 truncate">{w.name}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono text-slate-300">{formatRupiah(w.price)}</span>
-                      {w.boughtAt && <span>• {formatShortDate(w.boughtAt, false)}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 text-[10px] font-semibold">
-                      <CheckCircle className="w-3 h-3" />
-                      Dibeli
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteWishlist(w.id)}
-                      title="Hapus wishlist"
-                      className="p-1 text-slate-500 hover:text-rose-400"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Hero Card: Total Pos Tabungan */}
-        <section className="bento-card rounded-3xl p-6 sm:p-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Total Pos Tabungan
-            </span>
-            <span className="text-xs font-bold text-accent-300">{totalProgress}% dari Target</span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-            <div className="text-3xl sm:text-4xl font-extrabold font-heading text-emerald-400">
-              {formatRupiah(totalSaved)}
-            </div>
-            <div className="text-xs text-slate-400">
-              Target akumulasi: <strong className="text-slate-200">{formatRupiah(totalTarget)}</strong>
-            </div>
-          </div>
-
-          <div className="w-full h-3 bg-slate-950/70 border border-slate-800/60 rounded-full overflow-hidden p-0.5">
-            <div className="h-full bg-gradient-to-r from-accent-500 to-accent-300 rounded-full transition-all duration-500" style={{ width: `${totalProgress}%` }} />
-          </div>
-        </section>
-
-        {/* Telegram Shortcut Hint */}
-        <div className="p-3.5 rounded-2xl bg-accent-500/10 border border-accent-500/25 flex items-center gap-3 text-xs text-accent-200">
-          <Sparkles className="w-4 h-4 text-accent-300 shrink-0" />
-          <span>
-            <strong>Tips Bot:</strong> Ketik <code className="font-mono">/reminder</code> untuk cek tagihan & utang macet, <code className="font-mono">/saldo</code> untuk cek surplus, atau <code className="font-mono">audit bni 35k cash 273k</code> untuk cek gap instan.
-          </span>
+            );
+          })}
         </div>
 
-        {/* List of Pots */}
-        <section className="space-y-4">
-          {pots.length === 0 ? (
-            <div className="bento-card rounded-2xl p-12 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-                <PiggyBank className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-semibold text-slate-200">Belum Ada Pos Tabungan</h3>
-              <button onClick={() => setIsAddOpen(true)} className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-slate-950 font-semibold text-xs transition">
-                <Plus className="w-4 h-4" /> Tambah Pos Sekarang
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pots.map((pot) => {
-                const target = Number(pot.target) || 0;
-                const saved = Number(pot.saved) || 0;
-                const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
-
-                return (
-                  <div key={pot.id} className="bento-card rounded-2xl p-5 space-y-4 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold text-slate-100 text-sm">{pot.name}</h3>
-                        <button onClick={() => handleDeletePot(pot.id)} title="Hapus Pos" className="text-slate-500 hover:text-rose-400 p-1 transition">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="mt-4 flex items-baseline justify-between text-xs">
-                        <span className="text-base font-bold font-heading text-emerald-400">{formatRupiah(saved)}</span>
-                        <span className="text-slate-400 text-[11px]">Target: {formatRupiah(target)}</span>
-                      </div>
-                      <div className="mt-2 w-full h-2 bg-slate-950/70 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-accent-500 to-accent-300 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="mt-1 text-right text-[10px] text-slate-500 font-mono">{pct}% tercapai</div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-800/80">
-                      <button
-                        onClick={() => {
-                          setTopUpPotId(pot.id);
-                          setTopUpAmount("");
-                        }}
-                        className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition"
-                      >
-                        <TrendingUp className="w-3.5 h-3.5 text-accent-300" />
-                        <span>+ Isi Tabungan</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* MODAL: Audit Saldo (Surplus / Gap Checker) */}
-        {auditOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-md bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold font-heading text-slate-100 flex items-center gap-2">
-                  <Scale className="w-4 h-4 text-amber-400" />
-                  Audit Saldo (Cek Surplus / Gap)
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Masukkan angka saldo aktual di HP Tuan (untuk tagihan SPayLater isi negatif, misal -500000).
-                </p>
-              </div>
-
-              <form onSubmit={handleApplyAudit} className="space-y-3">
-                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                  {wallets
-                    .filter((w) => !w.locked)
-                    .map((w) => {
-                      const val = Number(auditInputs[w.id]) || 0;
-                      const diff = val - (Number(w.balance) || 0);
-                      return (
-                        <div key={w.id} className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-1.5">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-slate-200">{w.name}</span>
-                            <span
-                              className={`text-[10px] font-mono font-bold ${
-                                diff === 0 ? "text-slate-400" : diff > 0 ? "text-emerald-400" : "text-rose-400"
-                              }`}
-                            >
-                              {diff === 0 ? "KLOP" : `${diff > 0 ? "Surplus +" : "Gap "}${formatRupiah(diff)}`}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-500 shrink-0">
-                              Cat: {formatRupiah(w.balance)} →
-                            </span>
-                            <input
-                              type="number"
-                              value={auditInputs[w.id] ?? ""}
-                              onChange={(e) => setAuditInputs({ ...auditInputs, [w.id]: e.target.value })}
-                              className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 font-mono"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Total Selisih (Real − Catatan):</span>
-                  <span className={`font-bold font-mono ${auditDiffTotal === 0 ? "text-slate-300" : auditDiffTotal > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                    {auditDiffTotal === 0 ? "Rp 0 (KLOP)" : `${auditDiffTotal > 0 ? "+" : ""}${formatRupiah(auditDiffTotal)}`}
+        {/* TAB 1: DOMPET & POS */}
+        {activeSection === "dompet" && (
+          <div className="space-y-5">
+            {wallets.length > 0 && (
+              <section className="surface-card rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-accent-300" aria-hidden="true" />
+                    <span>Sumber Dana & PayLater</span>
+                  </h2>
+                  <span className="text-xs font-mono-num text-emerald-400 font-semibold">
+                    Bersih: {formatRupiah(data?.analytics?.walletSummary?.netWorthTotal ?? 0)}
                   </span>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-1">
-                  <button type="button" onClick={() => setAuditOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">
-                    Tutup
-                  </button>
-                  <button type="submit" disabled={actionLoading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Sesuaikan Saldo"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Bayar Tagihan Tetap */}
-        {payBillTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">
-                Bayar Tagihan: {payBillTarget.name.split("(")[0].trim()}
-              </h3>
-              <form onSubmit={handlePayBill} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nominal Bayar (Rp)</label>
-                  <input
-                    type="number"
-                    required
-                    value={payBillAmount}
-                    onChange={(e) => setPayBillAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Potong dari Dana</label>
-                  <select
-                    value={payBillWalletId}
-                    onChange={(e) => setPayBillWalletId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  >
-                    {wallets.filter((w) => !w.locked).map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({formatRupiah(w.balance)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setPayBillTarget(null)} className="px-3 py-1.5 text-xs text-slate-400">
-                    Batal
-                  </button>
-                  <button type="submit" disabled={actionLoading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Memproses..." : "Konfirmasi Bayar"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Tambah Pos */}
-        {isAddOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-md bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">Tambah Pos Tabungan Baru</h3>
-              <form onSubmit={handleAddPot} className="space-y-3">
-                <input type="text" required placeholder="Nama Pos (misal: Tabungan Kos, Gadget)" value={newPotName} onChange={(e) => setNewPotName(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100" />
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="number" required placeholder="Target (Rp)" value={newPotTarget} onChange={(e) => setNewPotTarget(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                  <input type="number" placeholder="Saldo Awal (Rp)" value={newPotSaved} onChange={(e) => setNewPotSaved(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                </div>
-                <input type="number" placeholder="Alokasi Bulanan (Opsional, Rp)" value={newPotMonthly} onChange={(e) => setNewPotMonthly(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setIsAddOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Simpan Pos"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Top Up Pos */}
-        {topUpPotId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">
-                Isi Tabungan: {pots.find((p) => p.id === topUpPotId)?.name}
-              </h3>
-              <form onSubmit={handleTopUp} className="space-y-4">
-                <input type="number" autoFocus required placeholder="Nominal Tambahan (Rp)" value={topUpAmount} onChange={(e) => setTopUpAmount(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 font-mono" />
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setTopUpPotId(null)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading || !topUpAmount} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyetor..." : "Setor"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Transfer Antar Dompet / Bayar SPayLater */}
-        {transferOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">Pindah Dana / Bayar SPayLater</h3>
-              <form onSubmit={handleTransfer} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Dari Dana</label>
-                  <select value={trFrom} onChange={(e) => setTrFrom(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100">
-                    {wallets.map((w) => (
-                      <option key={w.id} value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Ke Dana / Bayar Tagihan</label>
-                  <select value={trTo} onChange={(e) => setTrTo(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100">
-                    {wallets.map((w) => (
-                      <option key={w.id} value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-                    ))}
-                  </select>
-                </div>
-                <input type="number" required placeholder="Nominal (Rp)" value={trAmount} onChange={(e) => setTrAmount(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setTransferOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Memindahkan..." : "Pindahkan"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Tambah Utang/Piutang */}
-        {debtModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">Catat Utang / Piutang</h3>
-              <form onSubmit={handleAddDebt} className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  {["utang", "piutang"].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setDebtType(t)}
-                      className={`py-2 rounded-xl text-xs font-semibold border ${
-                        debtType === t
-                          ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
-                          : "bg-slate-900 text-slate-400 border-slate-800"
-                      }`}
-                    >
-                      {t === "utang" ? "Utang Tuan" : "Piutang (Di Orang)"}
-                    </button>
-                  ))}
-                </div>
-                <input type="text" required placeholder="Nama Orang / Tempat" value={debtPerson} onChange={(e) => setDebtPerson(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100" />
-                <input type="number" placeholder="Nominal Rp (kosongkan jika belum jelas)" value={debtAmount} onChange={(e) => setDebtAmount(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                <input type="text" placeholder="Catatan (opsional)" value={debtNote} onChange={(e) => setDebtNote(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100" />
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setDebtModalOpen(false)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs transition">
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Simpan"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Lunasi Utang/Piutang */}
-        {settleTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold font-heading text-slate-100">
-                {settleTarget.type === "piutang" ? "Terima Pembayaran Piutang" : "Bayar Utang"}: {settleTarget.person}
-              </h3>
-              <form onSubmit={handleSettleDebt} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nominal (Rp)</label>
-                  <input type="number" required value={settleAmount} onChange={(e) => setSettleAmount(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono" />
-                </div>
-                {wallets.length > 0 && (
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">
-                      {settleTarget.type === "piutang" ? "Masuk ke Dana" : "Bayar Pakai Dana"}
-                    </label>
-                    <select value={settleWalletId} onChange={(e) => setSettleWalletId(e.target.value)} className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100">
-                      {wallets.filter((w) => !w.locked && (settleTarget.type !== "piutang" || w.role !== "credit")).map((w) => (
-                        <option key={w.id} value={w.id}>{w.name} ({formatRupiah(w.balance)})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {settleTarget.amount > 0 && Number(settleAmount) > 0 && Number(settleAmount) < Number(settleTarget.amount) && (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] font-semibold text-amber-200">
-                    Cicilan sebagian — sisa{" "}
-                    <span className="font-mono font-bold">
-                      {formatRupiah(Number(settleTarget.amount) - Number(settleAmount))}
-                    </span>{" "}
-                    tetap di Belum Dibayar.
-                  </div>
-                )}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setSettleTarget(null)} className="px-3 py-1.5 text-xs text-slate-400">Batal</button>
-                  <button type="submit" disabled={actionLoading} className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-semibold text-xs flex items-center gap-1 transition">
-                    {actionLoading ? <Spinner className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}{" "}
-                    {actionLoading
-                      ? "Memproses..."
-                      : settleTarget.amount > 0 && Number(settleAmount) > 0 && Number(settleAmount) < Number(settleTarget.amount)
-                      ? "Catat Cicilan"
-                      : "Konfirmasi Lunas"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Sesuaikan (Kurangi / Tambah) Utang/Piutang */}
-        {adjustTarget && (() => {
-          const prev = Number(adjustTarget.amount) || 0;
-          const amtNum = Number(adjustAmount) || 0;
-          const signedDelta = (adjustMode === "sub" ? -1 : 1) * amtNum;
-          const nextSigned = prev + signedDelta;
-          const curLabel = adjustTarget.type === "piutang" ? "Piutang" : "Utang";
-          const flippedLabel = adjustTarget.type === "piutang" ? "Utang" : "Piutang";
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-              <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-                <div>
-                  <h3 className="text-sm font-bold font-heading text-slate-100">
-                    Sesuaikan {curLabel}: {adjustTarget.person}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Nominal saat ini: <strong className="text-slate-200 font-mono">{formatRupiah(prev)}</strong>
-                  </p>
-                </div>
-                <form onSubmit={handleAdjustDebt} className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: "sub", label: "− Kurangi" },
-                      { id: "add", label: "+ Tambah" },
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setAdjustMode(m.id)}
-                        className={`py-2 rounded-xl text-xs font-bold border transition ${
-                          adjustMode === m.id
-                            ? m.id === "sub"
-                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                              : "bg-accent-500/20 text-accent-300 border-accent-500/40"
-                            : "bg-slate-900 text-slate-400 border-slate-800"
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {wallets.map((w) => {
+                    const isCredit = w.role === "credit";
+                    const hasDebt = isCredit && w.balance < 0;
+                    return (
+                      <Link
+                        key={w.id}
+                        href={`/riwayat?wallet=${encodeURIComponent(w.id)}`}
+                        className={`wallet-tile p-3.5 rounded-xl flex items-center justify-between gap-2 group pressable ${
+                          hasDebt ? "border-t-2 border-t-rose-400/80" : ""
                         }`}
                       >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Nominal (Rp)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      autoFocus
-                      placeholder="Misal: 79000"
-                      value={adjustAmount}
-                      onChange={(e) => setAdjustAmount(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Catatan / Alasan (opsional)</label>
-                    <input
-                      type="text"
-                      placeholder="Misal: makan gyurih, bayar sebagian"
-                      value={adjustReason}
-                      onChange={(e) => setAdjustReason(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                    />
-                  </div>
-                  {amtNum > 0 && (
-                    <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs font-semibold text-slate-100">
-                      {formatRupiah(prev)} {adjustMode === "sub" ? "−" : "+"} {formatRupiah(amtNum)} ={" "}
-                      {nextSigned === 0 ? (
-                        <span className="text-emerald-400 font-bold">Impas (Rp 0 — Lunas)</span>
-                      ) : nextSigned > 0 ? (
-                        <span className="text-accent-300 font-bold">
-                          Sisa {curLabel} {formatRupiah(nextSigned)}
-                        </span>
-                      ) : (
-                        <span className="text-amber-300 font-bold">
-                          Berbalik jadi {flippedLabel} {formatRupiah(Math.abs(nextSigned))}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button type="button" onClick={() => setAdjustTarget(null)} className="px-3 py-1.5 text-xs text-slate-400">
-                      Batal
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={actionLoading || amtNum <= 0}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
-                    >
-                      {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                      <span>{actionLoading ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          );
-        })()}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs font-semibold text-slate-100 truncate" title={w.name}>
+                              {w.name}
+                            </span>
+                            {w.locked && <Lock className="w-3 h-3 text-amber-400 shrink-0" aria-hidden="true" />}
+                            {isCredit && <CreditCard className="w-3 h-3 text-rose-400 shrink-0" aria-hidden="true" />}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                            {w.locked
+                              ? "Dana Darurat (Terkunci)"
+                              : isCredit
+                              ? hasDebt
+                                ? "Tagihan Berjalan"
+                                : "PayLater (Lunas)"
+                              : w.role === "daily"
+                              ? "Dana Harian"
+                              : "Simpanan"}
+                          </div>
+                        </div>
+                        <div className="text-right flex items-center gap-1 shrink-0">
+                          <span
+                            className={`text-sm font-bold font-mono-num whitespace-nowrap ${
+                              hasDebt ? "text-rose-400" : w.locked ? "text-amber-300" : "text-emerald-400"
+                            }`}
+                          >
+                            {formatRupiah(w.balance)}
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-200 shrink-0" aria-hidden="true" />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
-        {/* MODAL: Tambah / Edit Wishlist */}
-        {wishModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-bold font-heading text-slate-100">
-                {editingWish ? "Edit Wishlist" : "Tambah Wishlist Belanja"}
-              </h3>
-              <form onSubmit={handleSaveWishlist} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nama Barang</label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    placeholder="Misal: Huawei Watch Fit 5"
-                    value={wishName}
-                    onChange={(e) => setWishName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Harga (Rp)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="1740800"
-                      value={wishPrice}
-                      onChange={(e) => setWishPrice(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Sudah Terkumpul</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={wishSaved}
-                      onChange={(e) => setWishSaved(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Prioritas</label>
-                  <select
-                    value={wishPriority}
-                    onChange={(e) => setWishPriority(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  >
-                    <option value="high">Prioritas Tinggi</option>
-                    <option value="medium">Sedang</option>
-                    <option value="low">Santai</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Link Produk (opsional)</label>
-                  <input
-                    type="url"
-                    placeholder="https://id.shp.ee/..."
-                    value={wishUrl}
-                    onChange={(e) => setWishUrl(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="Misal: tunggu promo gajian"
-                    value={wishNote}
-                    onChange={(e) => setWishNote(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setWishModalOpen(false)}
-                    className="px-3 py-1.5 text-xs text-slate-400"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
-                  >
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Simpan Wishlist"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Tandai Wishlist Dibeli */}
-        {buyWishTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-bold font-heading text-slate-100">
-                Beli Wishlist: {buyWishTarget.name}
-              </h3>
-              <form onSubmit={handleBuyWishlist} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nominal Beli (Rp)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={buyWishAmount}
-                    onChange={(e) => setBuyWishAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={buyWishLogTx}
-                    onChange={(e) => setBuyWishLogTx(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900"
-                  />
-                  <span>Catat pengeluaran &amp; potong saldo dompet</span>
-                </label>
-                {buyWishLogTx && (
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Pakai Sumber Dana</label>
-                    <select
-                      value={buyWishWalletId}
-                      onChange={(e) => setBuyWishWalletId(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                    >
-                      {wallets
-                        .filter((w) => !w.locked)
-                        .map((w) => (
-                          <option key={w.id} value={w.id}>
-                            {w.name} ({formatRupiah(w.balance)})
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setBuyWishTarget(null)}
-                    className="px-3 py-1.5 text-xs text-slate-400"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center gap-1 transition"
-                  >
-                    {actionLoading ? <Spinner className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Memproses..." : "Konfirmasi Dibeli"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Atur Template Bagi Gaji */}
-        {planModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold font-heading text-slate-100">
-                    Template Checklist Bagi Gaji
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Total alokasi:{" "}
-                    <strong className="font-mono text-accent-300">
-                      {formatRupiah(planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0))}
-                    </strong>{" "}
-                    • Sisa untuk harian:{" "}
-                    <strong className="font-mono text-emerald-400">
-                      {formatRupiah(
-                        Math.max(
-                          0,
-                          (Number(data?.profile?.monthlyIncome) || 0) -
-                            planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0)
-                        )
-                      )}
-                    </strong>
-                  </p>
-                </div>
+            <section className="surface-card rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <PiggyBank className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+                  <span>Target Pos Tabungan ({pots.length})</span>
+                </h2>
                 <button
                   type="button"
-                  onClick={() =>
-                    setPlanDraft([
-                      ...planDraft,
-                      {
-                        id: `pd_${Date.now()}_${planDraft.length}`,
-                        label: "",
-                        type: "transfer",
-                        amount: 0,
-                        fromWalletId: "bni",
-                        toWalletId: "saqu",
-                        billId: "",
-                        note: "",
-                      },
-                    ])
-                  }
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold"
+                  onClick={() => setIsAddOpen(true)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] text-slate-200 border border-[var(--border-default)] text-xs font-semibold pressable"
                 >
-                  + Tambah Baris
+                  <Plus className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                  <span>Tambah Pos</span>
                 </button>
               </div>
 
-              <form onSubmit={handleSavePaydayPlan} className="space-y-3">
-                <div className="space-y-2.5">
-                  {planDraft.map((row, idx) => (
-                    <div key={row.id || idx} className="p-3 rounded-xl bg-slate-900/75 border border-slate-800 space-y-2 text-xs">
-                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                        <input
-                          type="text"
-                          required
-                          placeholder="Nama pos (mis. Dana Darurat RDPU)"
-                          value={row.label}
-                          onChange={(e) => {
-                            const next = [...planDraft];
-                            next[idx] = { ...row, label: e.target.value };
-                            setPlanDraft(next);
-                          }}
-                          className="sm:col-span-5 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100"
-                        />
-                        <select
-                          value={row.type}
-                          onChange={(e) => {
-                            const next = [...planDraft];
-                            next[idx] = { ...row, type: e.target.value };
-                            setPlanDraft(next);
-                          }}
-                          className="sm:col-span-3 px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100"
-                        >
-                          <option value="transfer">Transfer Dompet</option>
-                          <option value="bill">Bayar Tagihan</option>
-                          <option value="note">Catatan Saja</option>
-                        </select>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="Nominal"
-                          value={row.amount}
-                          onChange={(e) => {
-                            const next = [...planDraft];
-                            next[idx] = { ...row, amount: Number(e.target.value) || 0 };
-                            setPlanDraft(next);
-                          }}
-                          className="sm:col-span-3 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 font-mono"
-                        />
+              {pots.length === 0 ? (
+                <div className="py-10 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] flex items-center justify-center mx-auto text-slate-400">
+                    <PiggyBank className="w-6 h-6" aria-hidden="true" />
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Belum ada pos tabungan khusus. Buat target terpisah untuk dana darurat atau rencana pembelian.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-[var(--cta-ink)] font-semibold text-xs pressable"
+                  >
+                    <Plus className="w-4 h-4" aria-hidden="true" />
+                    <span>Tambah Pos Sekarang</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {pots.map((pot) => {
+                    const target = Number(pot.target) || 0;
+                    const saved = Number(pot.saved) || 0;
+                    const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
+
+                    return (
+                      <div
+                        key={pot.id}
+                        className="p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-3.5 flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-semibold text-slate-100 text-sm">{pot.name}</h3>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePot(pot.id)}
+                              aria-label={`Hapus pos ${pot.name}`}
+                              title="Hapus Pos"
+                              className="text-slate-400 hover:text-rose-300 p-1 rounded-lg hover:bg-rose-500/10 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                          <div className="mt-3 flex items-baseline justify-between text-xs">
+                            <span className="text-base font-bold font-heading tabular-nums text-emerald-400">
+                              {formatRupiah(saved)}
+                            </span>
+                            <span className="text-slate-400 text-[11px] font-mono-num">
+                              Target: {formatRupiah(target)}
+                            </span>
+                          </div>
+                          <div className="mt-2 w-full h-1.5 bg-[var(--track-bg)] rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-accent-500 rounded-full transition-all duration-300"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 text-right text-[11px] text-slate-400 font-mono-num">
+                            {pct}% tercapai
+                          </div>
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => setPlanDraft(planDraft.filter((_, i) => i !== idx))}
-                          className="sm:col-span-1 p-1.5 text-slate-500 hover:text-rose-400 flex items-center justify-center"
-                          title="Hapus baris"
+                          onClick={() => {
+                            setTopUpPotId(pot.id);
+                            setTopUpAmount("");
+                          }}
+                          className="w-full min-h-[36px] py-2 px-3 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-slate-100 text-xs font-medium flex items-center justify-center gap-1.5 pressable"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <TrendingUp className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                          <span>+ Isi Tabungan</span>
                         </button>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <select
-                          value={row.fromWalletId || ""}
-                          onChange={(e) => {
-                            const next = [...planDraft];
-                            next[idx] = { ...row, fromWalletId: e.target.value };
-                            setPlanDraft(next);
-                          }}
-                          className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
-                        >
-                          <option value="">Dari: (opsional)</option>
-                          {wallets.map((w) => (
-                            <option key={w.id} value={w.id}>
-                              Dari: {w.name}
-                            </option>
-                          ))}
-                        </select>
+            <div className="px-4 py-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] flex items-center gap-2.5 text-xs text-slate-400">
+              <Terminal className="w-4 h-4 text-accent-300 shrink-0" aria-hidden="true" />
+              <span>
+                Shortcut Telegram:{" "}
+                <code className="font-mono text-slate-200">/reminder</code> cek tagihan,{" "}
+                <code className="font-mono text-slate-200">/saldo</code> cek surplus, atau{" "}
+                <code className="font-mono text-slate-200">audit bni 35k cash 273k</code>.
+              </span>
+            </div>
+          </div>
+        )}
 
-                        {row.type === "bill" ? (
-                          <select
-                            value={row.billId || ""}
-                            onChange={(e) => {
-                              const next = [...planDraft];
-                              next[idx] = { ...row, billId: e.target.value };
-                              setPlanDraft(next);
-                            }}
-                            className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
+        {/* TAB 2: ALOKASI RUTIN GAJIAN */}
+        {activeSection === "gajian" && (
+          <section id="gajian" className="surface-card rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+                  <span>Alokasi Rutin Gajian</span>
+                  {paydayChecklist?.totalCount > 0 && (
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
+                        paydayChecklist.allDone
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : "bg-accent-500/15 text-accent-200 border-accent-500/30"
+                      }`}
+                    >
+                      {paydayChecklist.doneCount}/{paydayChecklist.totalCount} selesai
+                    </span>
+                  )}
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Panduan transfer tiap gajian ({paydayChecklist?.periodShort || "Siklus Ini"} ·{" "}
+                  {paydayChecklist?.periodRange || "-"}). Centang agar saldo dompet otomatis berpindah.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openPlanModal}
+                className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] text-slate-200 border border-[var(--border-default)] text-xs font-semibold flex items-center gap-1.5 pressable"
+              >
+                <Pencil className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                <span>Atur Template</span>
+              </button>
+            </div>
+
+            {!paydayChecklist || paydayChecklist.items.length === 0 ? (
+              <div className="p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] text-xs text-slate-400 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <span>
+                  Belum ada template bagi gaji. Atur urutan transfer tabungan, kos, dan investasi tiap gajian.
+                </span>
+                <button
+                  type="button"
+                  onClick={openPlanModal}
+                  className="self-start sm:self-auto px-3.5 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 text-[var(--cta-ink)] font-semibold text-xs shrink-0 pressable"
+                >
+                  Buat Template
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {paydayChecklist.totalCount > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Progres alokasi siklus ini</span>
+                      <span className="font-mono-num font-semibold text-slate-200">
+                        {Math.round((paydayChecklist.doneCount / paydayChecklist.totalCount) * 100)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-[var(--bg-inset)] overflow-hidden">
+                      <div
+                        style={{
+                          width: `${Math.round(
+                            (paydayChecklist.doneCount / paydayChecklist.totalCount) * 100
+                          )}%`,
+                        }}
+                        className={`h-full rounded-full chart-bar-fill ${
+                          paydayChecklist.allDone ? "bg-emerald-400" : "bg-accent-500"
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                    <div className="text-[11px] text-slate-400">Gaji Rutinan</div>
+                    <div className="font-mono-num font-bold text-slate-100 mt-0.5 text-sm">
+                      {formatRupiah(paydayChecklist.monthlyIncome)}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                    <div className="text-[11px] text-slate-400">Total Dialokasikan</div>
+                    <div className="font-mono-num font-bold text-accent-300 mt-0.5 text-sm">
+                      {formatRupiah(paydayChecklist.totalPlanned)}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/25">
+                    <div className="text-[11px] text-emerald-300">Sisa Dana Harian</div>
+                    <div className="font-mono-num font-bold text-emerald-400 mt-0.5 text-sm">
+                      {formatRupiah(paydayChecklist.remainingForDaily)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                  {paydayChecklist.items.map((it) => (
+                    <div
+                      key={it.id}
+                      className={`p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                        it.done ? "bg-emerald-500/[0.04]" : it.auto ? "bg-amber-500/[0.04]" : ""
+                      }`}
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`text-[13px] font-semibold ${
+                              it.done ? "line-through text-slate-400" : "text-slate-100"
+                            }`}
                           >
-                            <option value="">Pilih Tagihan</option>
-                            {(data?.profile?.fixedCosts || []).map((fc) => (
-                              <option key={fc.id} value={fc.id}>
-                                {fc.name}
-                              </option>
-                            ))}
-                          </select>
+                            {it.label}
+                          </span>
+                          {it.type === "transfer" && it.fromWalletName && it.toWalletName && (
+                            <span className="px-2 py-0.5 rounded-md bg-[var(--track-bg)] text-[11px] text-slate-300 font-medium">
+                              {it.fromWalletName} → {it.toWalletName}
+                            </span>
+                          )}
+                          {it.type === "bill" && it.fromWalletName && (
+                            <span className="px-2 py-0.5 rounded-md bg-[var(--track-bg)] text-[11px] text-slate-300 font-medium">
+                              via {it.fromWalletName}
+                            </span>
+                          )}
+                          {it.auto && (
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[11px] font-semibold">
+                              Tagihan Berjalan
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-mono-num font-bold text-slate-200">
+                            {formatRupiah(it.amount)}
+                          </span>
+                          {it.note && <span className="text-slate-400">· {it.note}</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {it.done ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
+                              <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Selesai</span>
+                            </span>
+                            {!it.auto && (
+                              <button
+                                type="button"
+                                disabled={actionLoading}
+                                onClick={() => handleUncheckPaydayStep(it.id)}
+                                className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 disabled:opacity-50 px-2 py-1"
+                              >
+                                {actionLoading && <Spinner className="w-3 h-3" />}
+                                <span>Batal</span>
+                              </button>
+                            )}
+                          </>
                         ) : (
-                          <select
-                            value={row.toWalletId || ""}
-                            onChange={(e) => {
-                              const next = [...planDraft];
-                              next[idx] = { ...row, toWalletId: e.target.value };
-                              setPlanDraft(next);
-                            }}
-                            className="px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
-                          >
-                            <option value="">Ke: (opsional)</option>
-                            {wallets.map((w) => (
-                              <option key={w.id} value={w.id}>
-                                Ke: {w.name}
-                              </option>
-                            ))}
-                          </select>
+                          <>
+                            <button
+                              type="button"
+                              disabled={actionLoading}
+                              onClick={() => handleCompletePaydayStep(it.id, true)}
+                              className="min-h-[34px] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 disabled:opacity-50 text-accent-200 border border-accent-500/35 text-[11px] font-semibold pressable"
+                            >
+                              {actionLoading ? (
+                                <Spinner className="w-3 h-3" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                              )}
+                              <span>{it.type === "bill" ? "Bayar & Centang" : "Transfer & Centang"}</span>
+                            </button>
+                            {!it.auto && (
+                              <button
+                                type="button"
+                                disabled={actionLoading}
+                                onClick={() => handleCompletePaydayStep(it.id, false)}
+                                title="Tandai selesai tanpa ubah saldo dompet"
+                                className="min-h-[34px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] disabled:opacity-50 text-slate-300 border border-[var(--border-subtle)] text-[11px] font-medium pressable"
+                              >
+                                Centang saja
+                              </button>
+                            )}
+                          </>
                         )}
-
-                        <input
-                          type="text"
-                          placeholder="Catatan singkat"
-                          value={row.note || ""}
-                          onChange={(e) => {
-                            const next = [...planDraft];
-                            next[idx] = { ...row, note: e.target.value };
-                            setPlanDraft(next);
-                          }}
-                          className="px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-[11px]"
-                        />
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setPlanModalOpen(false)}
-                    className="px-3 py-1.5 text-xs text-slate-400"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
-                  >
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Simpan Template"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: Tambah / Edit Piutang Cicilan */}
-        {instModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-md bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-bold font-heading text-slate-100">
-                {editingInst ? "Edit Piutang Cicilan" : "Tambah Piutang Cicilan Berjangka"}
-              </h3>
-              <form onSubmit={handleSaveInstallment} className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Nama Orang</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Misal: Andani"
-                      value={instPerson}
-                      onChange={(e) => setInstPerson(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Label Cicilan</label>
-                    <input
-                      type="text"
-                      placeholder="Cicilan Andani"
-                      value={instLabel}
-                      onChange={(e) => setInstLabel(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Total Pokok (Rp)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      placeholder="10000000"
-                      value={instTotal}
-                      onChange={(e) => setInstTotal(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Cicilan / Bulan (Rp)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      placeholder="1000000"
-                      value={instMonthly}
-                      onChange={(e) => setInstMonthly(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Tanggal Jatuh Tempo (1-28)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="28"
-                      required
-                      value={instDueDay}
-                      onChange={(e) => setInstDueDay(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Masuk ke Dompet</label>
-                    <select
-                      value={instTargetWalletId}
-                      onChange={(e) => setInstTargetWalletId(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                {paydayChecklist.nearestWishlist && (
+                  <div className="pt-1 flex items-center justify-between gap-2 flex-wrap text-xs text-slate-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      <ShoppingBag className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                      <span>
+                        Wishlist terdekat:{" "}
+                        <strong className="text-slate-200">{paydayChecklist.nearestWishlist.name}</strong> (
+                        <span className="font-mono-num text-accent-300">
+                          {formatRupiah(paydayChecklist.nearestWishlist.price)}
+                        </span>
+                        )
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection("wishlist")}
+                      className="text-accent-300 hover:text-accent-200 font-semibold"
                     >
-                      <option value="">Pilih Dompet Tujuan</option>
-                      {wallets
-                        .filter((w) => !w.locked && w.role !== "credit")
-                        .map((w) => (
-                          <option key={w.id} value={w.id}>
-                            {w.name}
-                          </option>
-                        ))}
-                    </select>
+                      Buka Wishlist →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* TAB 3: TAGIHAN TETAP & UTANG/PIUTANG */}
+        {activeSection === "tagihan" && (
+          <div className="space-y-5">
+            <section id="tagihan" className="surface-card rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-400" aria-hidden="true" />
+                    <span>Tagihan Tetap & Jadwal Reminder</span>
+                  </h2>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Pengingat Telegram dikirim otomatis tiap pagi menjelang jatuh tempo.
+                  </p>
+                </div>
+                <Link
+                  href="/atur"
+                  className="text-xs text-accent-300 hover:text-accent-200 font-medium shrink-0"
+                >
+                  Edit di Atur
+                </Link>
+              </div>
+
+              {upcomingBills.length === 0 ? (
+                <p className="text-xs text-slate-400">
+                  Belum ada tagihan tetap. Tambahkan di halaman{" "}
+                  <Link href="/atur" className="text-accent-300 underline">
+                    Atur
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {upcomingBills.map((b) => (
+                    <div
+                      key={b.id}
+                      className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs ${
+                        b.paidInCurrentCycle
+                          ? "bg-emerald-500/[0.06] border-emerald-500/25"
+                          : b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                          ? "bg-rose-500/[0.06] border-rose-500/30"
+                          : b.urgency === "SOON"
+                          ? "bg-amber-500/[0.06] border-amber-500/30"
+                          : "bg-[var(--bg-inset)] border-[var(--border-subtle)]"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-slate-100 truncate">{b.name}</span>
+                          {b.paidInCurrentCycle && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/20 text-emerald-300">
+                              <Check className="w-3 h-3" aria-hidden="true" />
+                              <span>Sudah Dibayar{b.lastPaidLabel ? ` (${b.lastPaidLabel})` : ""}</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono-num font-semibold text-slate-200">
+                            {b.amount > 0 ? `${formatRupiah(b.amount)}/bln` : "Lunas"}
+                          </span>
+                          {b.nextDueDate && (
+                            <>
+                              <span>·</span>
+                              <span>Jatuh tempo {b.nextDueDate}</span>
+                            </>
+                          )}
+                          {!b.paidInCurrentCycle && b.lastPaidLabel && (
+                            <>
+                              <span>·</span>
+                              <span>Terakhir bayar {b.lastPaidLabel}</span>
+                            </>
+                          )}
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${
+                              b.paidInCurrentCycle
+                                ? "bg-emerald-500/15 text-emerald-300"
+                                : b.urgency === "OVERDUE" || b.urgency === "TODAY"
+                                ? "bg-rose-500/20 text-rose-300"
+                                : b.urgency === "SOON"
+                                ? "bg-amber-500/20 text-amber-300"
+                                : "bg-[var(--track-bg)] text-slate-300"
+                            }`}
+                          >
+                            {b.dueLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {b.amount > 0 && b.urgency !== "INACTIVE" && (
+                        b.paidInCurrentCycle ? (
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
+                              <Check className="w-3 h-3" aria-hidden="true" />
+                              <span>Lunas</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPayBillTarget(b);
+                                setPayBillAmount(String(b.dueAmount || b.amount));
+                                setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
+                              }}
+                              className="text-[11px] text-slate-400 hover:text-slate-200 transition whitespace-nowrap"
+                            >
+                              Bayar lagi
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPayBillTarget(b);
+                              setPayBillAmount(String(b.dueAmount || b.amount));
+                              setPayBillWalletId(wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni");
+                            }}
+                            className="min-h-[34px] px-3 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-200 border border-accent-500/35 text-[11px] font-semibold shrink-0 pressable"
+                          >
+                            Tandai Bayar
+                          </button>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section id="utang" className="surface-card rounded-2xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-amber-400" aria-hidden="true" />
+                  <span>Catatan Utang & Piutang</span>
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setDebtModalOpen(true)}
+                  className="min-h-[34px] px-3 py-1.5 rounded-xl bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] text-slate-200 border border-[var(--border-default)] text-xs font-semibold flex items-center gap-1.5 pressable"
+                >
+                  <Plus className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                  <span>Catat Utang/Piutang</span>
+                </button>
+              </div>
+
+              <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setDebtTab("open")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    debtTab === "open"
+                      ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span>Belum Dibayar</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {openDebts.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDebtTab("paid")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    debtTab === "paid"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      : "text-slate-400 hover:text-slate-200 border border-transparent"
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Sudah Dibayar</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {paidDebts.length}
+                  </span>
+                </button>
+              </div>
+
+              {debtTab === "open" ? (
+                <div className="space-y-4">
+                  {simplifiableGroups.length > 0 && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/[0.08] border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="text-xs font-semibold text-amber-300">
+                          Bisa Disederhanakan (Impas)
+                        </div>
+                        <div className="space-y-0.5 text-xs text-slate-200 leading-relaxed">
+                          {simplifiableGroups.map((g) => (
+                            <div key={g.person}>
+                              {g.hasBoth ? (
+                                g.net > 0 ? (
+                                  <>
+                                    <strong>{g.person}</strong>: Piutang {formatRupiah(g.piutangTotal)} − Utang{" "}
+                                    {formatRupiah(g.utangTotal)} ={" "}
+                                    <strong className="text-emerald-300">Sisa Piutang {formatRupiah(g.net)}</strong>
+                                  </>
+                                ) : g.net < 0 ? (
+                                  <>
+                                    <strong>{g.person}</strong>: Utang {formatRupiah(g.utangTotal)} − Piutang{" "}
+                                    {formatRupiah(g.piutangTotal)} ={" "}
+                                    <strong className="text-rose-300">Sisa Utang {formatRupiah(Math.abs(g.net))}</strong>
+                                  </>
+                                ) : (
+                                  <>
+                                    <strong>{g.person}</strong>: Piutang {formatRupiah(g.piutangTotal)} − Utang{" "}
+                                    {formatRupiah(g.utangTotal)} ={" "}
+                                    <strong className="text-emerald-300">Impas (Rp 0)</strong>
+                                  </>
+                                )
+                              ) : (
+                                <>
+                                  <strong>{g.person}</strong>: Gabung {g.count} catatan →{" "}
+                                  <strong className="text-accent-300">
+                                    {g.piutangTotal > 0
+                                      ? `Piutang ${formatRupiah(g.piutangTotal)}`
+                                      : `Utang ${formatRupiah(g.utangTotal)}`}
+                                  </strong>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSimplifyDebts}
+                        disabled={actionLoading}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs shrink-0 pressable"
+                      >
+                        {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                        <span>{actionLoading ? "Memproses..." : "Sederhanakan"}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      {
+                        key: "utang",
+                        title: `Utang ${userCall}`,
+                        list: utangList,
+                        titleClass: "text-rose-300",
+                        totalClass: "text-rose-400",
+                        amtClass: "text-rose-300",
+                        emptyText: "Tidak ada utang yang belum dibayar.",
+                      },
+                      {
+                        key: "piutang",
+                        title: "Piutang / Uang di Orang",
+                        list: piutangList,
+                        titleClass: "text-emerald-300",
+                        totalClass: "text-emerald-400",
+                        amtClass: "text-emerald-300",
+                        emptyText: "Tidak ada piutang yang belum dibayar.",
+                      },
+                    ].map((col) => (
+                      <div key={col.key} className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs px-0.5">
+                          <span className={`font-semibold ${col.titleClass}`}>
+                            {col.title} ({col.list.length})
+                          </span>
+                          <span className={`font-mono-num font-bold ${col.totalClass}`}>
+                            {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                          </span>
+                        </div>
+
+                        {col.list.length === 0 ? (
+                          <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                            {col.emptyText}
+                          </p>
+                        ) : (
+                          <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                            {col.list.map((d) => (
+                              <div key={d.id} className="p-3.5 space-y-2 text-xs">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-slate-100 text-[13px] truncate">
+                                      {d.person}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                      <span className={`font-bold font-mono-num text-xs ${col.amtClass}`}>
+                                        {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
+                                      </span>
+                                      {d.ageDays > 0 && (
+                                        <span className="text-[11px] text-slate-400">· {d.ageDays}h</span>
+                                      )}
+                                      {d.isSnoozed && (
+                                        <span className="text-[11px] text-amber-300 font-medium">· snooze</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSnoozeDebt(d.id)}
+                                      aria-label={`Tunda pengingat ${d.person}`}
+                                      title="Tunda reminder 3 hari"
+                                      className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-400 hover:text-amber-300 transition"
+                                    >
+                                      <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAdjustTarget(d);
+                                        setAdjustMode("sub");
+                                        setAdjustAmount("");
+                                        setAdjustReason("");
+                                      }}
+                                      aria-label={`Sesuaikan nominal ${d.person}`}
+                                      title="Kurangi / Tambah nominal"
+                                      className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-300 hover:text-accent-300 transition"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSettleTarget(d);
+                                        setSettleAmount(d.amount ? String(d.amount) : "");
+                                        setSettleWalletId(
+                                          wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni"
+                                        );
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent-500/15 hover:bg-accent-500/25 text-accent-200 border border-accent-500/30 text-[11px] font-semibold pressable"
+                                    >
+                                      <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                                      <span>Lunas</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteDebt(d.id)}
+                                      aria-label={`Hapus catatan ${d.person}`}
+                                      title="Hapus catatan"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                  </div>
+                                </div>
+                                {d.note && (
+                                  <p className="text-[11px] text-slate-300 leading-relaxed break-words">
+                                    {d.note}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="Misal: Rencana untuk RDPU/DCA"
-                    value={instNote}
-                    onChange={(e) => setInstNote(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
-                  />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    {
+                      key: "paid-utang",
+                      title: "Utang Sudah Dibayar",
+                      list: paidUtangList,
+                      emptyText: "Belum ada riwayat utang yang sudah dibayar.",
+                    },
+                    {
+                      key: "paid-piutang",
+                      title: "Piutang Sudah Dibayar",
+                      list: paidPiutangList,
+                      emptyText: "Belum ada riwayat piutang yang sudah dibayar.",
+                    },
+                  ].map((col) => (
+                    <div key={col.key} className="space-y-2.5">
+                      <div className="flex items-center justify-between text-xs px-0.5">
+                        <span className="font-semibold text-slate-200">
+                          {col.title} ({col.list.length})
+                        </span>
+                        <span className="font-mono-num text-slate-200 font-bold">
+                          {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                        </span>
+                      </div>
+
+                      {col.list.length === 0 ? (
+                        <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                          {col.emptyText}
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                          {col.list.map((d) => {
+                            const wName = d.targetWalletId
+                              ? wallets.find((w) => w.id === d.targetWalletId)?.name
+                              : "";
+                            return (
+                              <div key={d.id} className="p-3.5 space-y-1.5 text-xs">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-slate-100 text-[13px] truncate">
+                                      {d.person}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] text-slate-400">
+                                      <span className="font-semibold font-mono-num text-slate-200">
+                                        {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
+                                      </span>
+                                      {d.paidAt && <span>· {formatShortDate(d.paidAt, false)}</span>}
+                                      {wName && <span>· {wName}</span>}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold">
+                                      <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                                      <span>Lunas</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteDebt(d.id)}
+                                      aria-label={`Hapus riwayat ${d.person}`}
+                                      title="Hapus riwayat"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                    </button>
+                                  </div>
+                                </div>
+                                {d.note && (
+                                  <p className="text-[11px] text-slate-400 leading-relaxed break-words">
+                                    {d.note}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setInstModalOpen(false)}
-                    className="px-3 py-1.5 text-xs text-slate-400"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
-                  >
-                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Menyimpan..." : "Simpan Cicilan"}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
+              )}
+            </section>
           </div>
         )}
 
-        {/* MODAL: Terima Cicilan Bulanan */}
-        {payInstTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="w-full max-w-sm bento-card rounded-2xl p-6 border border-slate-800 space-y-4">
+        {/* TAB 4: CICILAN BERJANGKA (NOTE: exact string "Piutang Cicilan" kept solely on the tab button for E2E strict selector) */}
+        {activeSection === "cicilan" && (
+          <section id="cicilan" className="surface-card rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-bold font-heading text-slate-100">
-                  Terima Cicilan: {payInstTarget.label || payInstTarget.person}
-                </h3>
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+                  <span>Cicilan Berjangka</span>
+                </h2>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Progress saat ini:{" "}
-                  <strong className="text-slate-200 font-mono">
-                    {payInstTarget.paidCount}/{payInstTarget.totalMonths} bln
-                  </strong>
+                  Terpisah dari utang harian · jatuh tempo bulanan otomatis diingatkan di Telegram
                 </p>
               </div>
-              <form onSubmit={handlePayInstallment} className="space-y-3">
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nominal Diterima (Rp)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={payInstAmount}
-                    onChange={(e) => setPayInstAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-mono"
-                  />
+              <div className="flex items-center gap-2">
+                {totalInstallmentRemaining > 0 && (
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-bold font-mono-num bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    Sisa: {formatRupiah(totalInstallmentRemaining)}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={openNewInstModal}
+                  className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] text-slate-200 border border-[var(--border-default)] text-xs font-semibold flex items-center gap-1.5 pressable"
+                >
+                  <Plus className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                  <span>Tambah Cicilan</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
+              <button
+                type="button"
+                onClick={() => setInstTab("active")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  instTab === "active"
+                    ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>Berjalan</span>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                  {activeInstallments.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInstTab("paid")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  instTab === "paid"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200 border border-transparent"
+                }`}
+              >
+                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Lunas</span>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                  {paidInstallments.length}
+                </span>
+              </button>
+            </div>
+
+            {instTab === "active" ? (
+              activeInstallments.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4">
+                  Belum ada cicilan berjangka yang sedang berjalan.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {activeInstallments.map((inst) => {
+                    const totalAmt = Number(inst.totalAmount) || 0;
+                    const paidAmt = Number(inst.paidAmount) || 0;
+                    const remaining = Math.max(0, totalAmt - paidAmt);
+                    const pct = totalAmt > 0 ? Math.min(100, Math.round((paidAmt / totalAmt) * 100)) : 0;
+                    const targetW = wallets.find((w) => w.id === inst.targetWalletId);
+                    const lastHist =
+                      Array.isArray(inst.history) && inst.history.length > 0
+                        ? inst.history[inst.history.length - 1]
+                        : null;
+                    const urgencyClass =
+                      inst.urgency === "OVERDUE" || inst.urgency === "TODAY"
+                        ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                        : inst.urgency === "SOON"
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                        : "bg-[var(--track-bg)] text-slate-300 border-[var(--border-default)]";
+
+                    return (
+                      <div
+                        key={inst.id}
+                        className="p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-3 text-xs"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm text-slate-100">
+                                {inst.label || `Cicilan ${inst.person}`}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-accent-500/15 text-accent-200 border border-accent-500/30 text-[11px] font-semibold">
+                                {inst.person}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${urgencyClass}`}>
+                                Tgl {inst.dueDay} {inst.dueLabel ? `· ${inst.dueLabel}` : ""}
+                              </span>
+                              {targetW && (
+                                <span className="px-2 py-0.5 rounded-md bg-[var(--track-bg)] text-slate-300 text-[11px] font-medium">
+                                  → {targetW.name}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-300">
+                              <span>
+                                Cicilan:{" "}
+                                <strong className="font-mono-num text-emerald-400">
+                                  {formatRupiah(inst.monthlyAmount)}/bln
+                                </strong>
+                              </span>
+                              <span className="text-slate-600">·</span>
+                              <span>
+                                Sisa:{" "}
+                                <strong className="font-mono-num text-slate-100">
+                                  {formatRupiah(remaining)}
+                                </strong>{" "}
+                                <span className="text-slate-400">/ {formatRupiah(totalAmt)}</span>
+                              </span>
+                              {inst.nextDueDate && (
+                                <>
+                                  <span className="text-slate-600">·</span>
+                                  <span className="text-slate-400">Jatuh tempo {inst.nextDueDate}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openPayInstModal(inst)}
+                              className="min-h-[34px] inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent-500/20 hover:bg-accent-500/30 text-accent-200 border border-accent-500/35 text-xs font-semibold pressable"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Terima Cicilan</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditInstModal(inst)}
+                              aria-label={`Edit cicilan ${inst.label || inst.person}`}
+                              title="Edit cicilan"
+                              className="p-2 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-300 hover:text-accent-300 transition"
+                            >
+                              <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteInstallment(inst.id)}
+                              aria-label={`Hapus cicilan ${inst.label || inst.person}`}
+                              title="Hapus cicilan"
+                              className="p-2 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span>
+                              Progress:{" "}
+                              <strong className="text-slate-200 font-mono-num">
+                                {inst.paidCount}/{inst.totalMonths} bln
+                              </strong>{" "}
+                              · {pct}%
+                            </span>
+                            <span className="font-mono-num text-emerald-400">
+                              Masuk: {formatRupiah(paidAmt)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-[var(--track-bg)] overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-400 transition-all duration-300"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {(inst.note || lastHist) && (
+                          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+                            <span>{inst.note || ""}</span>
+                            {lastHist && (
+                              <span className="text-emerald-300 font-mono-num">
+                                Terakhir masuk {formatShortDate(lastHist.paidAt, false)}: +
+                                {formatRupiah(lastHist.amount)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+              )
+            ) : paidInstallments.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4">Belum ada cicilan berjangka yang lunas.</p>
+            ) : (
+              <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                {paidInstallments.map((inst) => (
+                  <div
+                    key={inst.id}
+                    className="p-3.5 flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-100">
+                        {inst.label || `Cicilan ${inst.person}`} ({inst.paidCount}/{inst.totalMonths} bln)
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Total diterima:{" "}
+                        <span className="font-mono-num text-emerald-300">{formatRupiah(inst.paidAmount)}</span>
+                        {inst.paidAt && ` · Lunas ${formatShortDate(inst.paidAt, false)}`}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteInstallment(inst.id)}
+                      aria-label={`Hapus riwayat ${inst.label || inst.person}`}
+                      title="Hapus riwayat"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* TAB 5: DAFTAR BARANG INCARAN (NOTE: exact string "Wishlist Belanja" kept solely on the tab button for E2E strict selector) */}
+        {activeSection === "wishlist" && (
+          <section id="wishlist" className="surface-card rounded-2xl p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-accent-300" aria-hidden="true" />
+                  <span>Daftar Barang Incaran</span>
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Pantau harga dan progres tabungan barang sebelum checkout.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {plannedWishlists.length > 0 && (
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-bold font-mono-num bg-accent-500/15 text-accent-200 border border-accent-500/30">
+                    Total: {formatRupiah(totalWishlistPlanned)}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={openNewWishModal}
+                  className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] text-slate-200 border border-[var(--border-default)] text-xs font-semibold flex items-center gap-1.5 pressable"
+                >
+                  <Plus className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+                  <span>Tambah Item</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
+              <button
+                type="button"
+                onClick={() => setWishlistTab("planned")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  wishlistTab === "planned"
+                    ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span>Direncanakan</span>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                  {plannedWishlists.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWishlistTab("bought")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  wishlistTab === "bought"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200 border border-transparent"
+                }`}
+              >
+                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Sudah Dibeli</span>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                  {boughtWishlists.length}
+                </span>
+              </button>
+            </div>
+
+            {wishlistTab === "planned" ? (
+              plannedWishlists.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4">
+                  Belum ada barang incaran. Klik &ldquo;Tambah Item&rdquo; atau ketik{" "}
+                  <code className="px-1.5 py-0.5 rounded bg-[var(--bg-inset)] text-slate-200 font-mono text-[11px]">
+                    tambah wishlist ...
+                  </code>{" "}
+                  di Telegram.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {plannedWishlists.map((w) => {
+                    const pct = w.price > 0 ? Math.min(100, Math.round(((w.saved || 0) / w.price) * 100)) : 0;
+                    return (
+                      <div
+                        key={w.id}
+                        className="p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-3 text-xs flex flex-col justify-between"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-slate-100 text-[13px] truncate">
+                                {w.name}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                  w.priority === "high"
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                    : w.priority === "low"
+                                    ? "bg-[var(--track-bg)] text-slate-400"
+                                    : "bg-accent-500/15 text-accent-200 border border-accent-500/25"
+                                }`}
+                              >
+                                {w.priority === "high"
+                                  ? "Prioritas"
+                                  : w.priority === "low"
+                                  ? "Santai"
+                                  : "Sedang"}
+                              </span>
+                            </div>
+                            <div className="font-mono-num font-bold text-sm text-emerald-400 mt-1">
+                              {w.price > 0 ? formatRupiah(w.price) : "Harga belum diisi"}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => openEditWishModal(w)}
+                              aria-label={`Edit ${w.name}`}
+                              title="Edit item"
+                              className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-300 hover:text-accent-300"
+                            >
+                              <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBuyWishTarget(w);
+                                setBuyWishAmount(w.price ? String(w.price) : "");
+                                setBuyWishWalletId(
+                                  wallets.find((x) => !x.locked && x.role !== "credit")?.id || "bni"
+                                );
+                                setBuyWishLogTx(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold pressable"
+                            >
+                              <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                              <span>Beli</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWishlist(w.id)}
+                              aria-label={`Hapus ${w.name}`}
+                              title="Hapus item"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {w.saved > 0 && w.price > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[11px] text-slate-400">
+                              <span>Terkumpul {formatRupiah(w.saved)}</span>
+                              <span className="font-mono-num text-accent-300">{pct}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-[var(--track-bg)] overflow-hidden">
+                              <div style={{ width: `${pct}%` }} className="h-full bg-accent-500 rounded-full" />
+                            </div>
+                          </div>
+                        )}
+
+                        {(w.url || w.note) && (
+                          <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            {w.note ? <span className="text-slate-400 truncate">{w.note}</span> : <span />}
+                            {w.url && /^https?:\/\//i.test(w.url) && (
+                              <a
+                                href={w.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-accent-300 hover:text-accent-200 font-semibold shrink-0"
+                              >
+                                <span>Buka Link</span>
+                                <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : boughtWishlists.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4">Belum ada item yang sudah dibeli.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {boughtWishlists.map((w) => (
+                  <div
+                    key={w.id}
+                    className="p-3.5 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-100 truncate">{w.name}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono-num text-slate-200">{formatRupiah(w.price)}</span>
+                        {w.boughtAt && <span>· {formatShortDate(w.boughtAt, false)}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold">
+                        <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                        <span>Dibeli</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWishlist(w.id)}
+                        aria-label={`Hapus ${w.name}`}
+                        title="Hapus item"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* MODALS (Unified Shared Accessible <Modal>) */}
+        <Modal
+          isOpen={auditOpen}
+          onClose={() => setAuditOpen(false)}
+          title="Audit Saldo (Cek Surplus / Gap)"
+          subtitle="Masukkan saldo aktual tiap sumber dana (isi negatif untuk tagihan PayLater, misal -500000)."
+        >
+          <form onSubmit={handleApplyAudit} className="space-y-3">
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {wallets
+                .filter((w) => !w.locked)
+                .map((w) => {
+                  const val = Number(auditInputs[w.id]) || 0;
+                  const diff = val - (Number(w.balance) || 0);
+                  return (
+                    <div
+                      key={w.id}
+                      className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-200">{w.name}</span>
+                        <span
+                          className={`text-[11px] font-mono-num font-bold ${
+                            diff === 0 ? "text-slate-400" : diff > 0 ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {diff === 0 ? "KLOP" : `${diff > 0 ? "Surplus +" : "Gap "}${formatRupiah(diff)}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-400 shrink-0 font-mono-num">
+                          Cat: {formatRupiah(w.balance)} →
+                        </span>
+                        <input
+                          type="number"
+                          aria-label={`Saldo aktual ${w.name}`}
+                          value={auditInputs[w.id] ?? ""}
+                          onChange={(e) => setAuditInputs({ ...auditInputs, [w.id]: e.target.value })}
+                          className="w-full px-2.5 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] flex items-center justify-between text-xs">
+              <span className="text-slate-400">Total Selisih (Real - Catatan):</span>
+              <span
+                className={`font-bold font-mono-num ${
+                  auditDiffTotal === 0
+                    ? "text-slate-200"
+                    : auditDiffTotal > 0
+                    ? "text-emerald-400"
+                    : "text-rose-400"
+                }`}
+              >
+                {auditDiffTotal === 0
+                  ? "Rp 0 (KLOP)"
+                  : `${auditDiffTotal > 0 ? "+" : ""}${formatRupiah(auditDiffTotal)}`}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setAuditOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Tutup
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Sesuaikan Saldo"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(payBillTarget)}
+          onClose={() => setPayBillTarget(null)}
+          title={
+            payBillTarget
+              ? `Bayar Tagihan: ${payBillTarget.name.split("(")[0].trim()}`
+              : "Bayar Tagihan"
+          }
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handlePayBill} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nominal Bayar (Rp)</label>
+              <input
+                type="number"
+                required
+                value={payBillAmount}
+                onChange={(e) => setPayBillAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Potong dari Dana</label>
+              <select
+                value={payBillWalletId}
+                onChange={(e) => setPayBillWalletId(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              >
+                {wallets
+                  .filter((w) => !w.locked)
+                  .map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({formatRupiah(w.balance)})
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPayBillTarget(null)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Memproses..." : "Konfirmasi Bayar"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={isAddOpen}
+          onClose={() => setIsAddOpen(false)}
+          title="Tambah Pos Tabungan Baru"
+        >
+          <form onSubmit={handleAddPot} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nama Pos</label>
+              <input
+                type="text"
+                required
+                placeholder="Misal: Tabungan Kos, Gadget"
+                value={newPotName}
+                onChange={(e) => setNewPotName(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Target (Rp)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="5000000"
+                  value={newPotTarget}
+                  onChange={(e) => setNewPotTarget(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Saldo Awal (Rp)</label>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={newPotSaved}
+                  onChange={(e) => setNewPotSaved(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Alokasi Bulanan (Opsional)</label>
+              <input
+                type="number"
+                placeholder="Rp"
+                value={newPotMonthly}
+                onChange={(e) => setNewPotMonthly(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Simpan Pos"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(topUpPotId)}
+          onClose={() => setTopUpPotId(null)}
+          title={`Isi Tabungan: ${pots.find((p) => p.id === topUpPotId)?.name || ""}`}
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handleTopUp} className="space-y-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nominal Tambahan (Rp)</label>
+              <input
+                type="number"
+                autoFocus
+                required
+                placeholder="500000"
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-sm text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setTopUpPotId(null)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading || !topUpAmount}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyetor..." : "Setor"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={transferOpen}
+          onClose={() => setTransferOpen(false)}
+          title="Pindah Dana / Bayar PayLater"
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handleTransfer} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Dari Dana</label>
+              <select
+                value={trFrom}
+                onChange={(e) => setTrFrom(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              >
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({formatRupiah(w.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Ke Dana / Bayar Tagihan</label>
+              <select
+                value={trTo}
+                onChange={(e) => setTrTo(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              >
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({formatRupiah(w.balance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nominal (Rp)</label>
+              <input
+                type="number"
+                required
+                placeholder="100000"
+                value={trAmount}
+                onChange={(e) => setTrAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTransferOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Memindahkan..." : "Pindahkan"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={debtModalOpen}
+          onClose={() => setDebtModalOpen(false)}
+          title="Catat Utang / Piutang"
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handleAddDebt} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              {["utang", "piutang"].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setDebtType(t)}
+                  className={`py-2 rounded-xl text-xs font-semibold border transition ${
+                    debtType === t
+                      ? "bg-accent-500/20 text-accent-200 border-accent-500/45"
+                      : "bg-[var(--bg-inset)] text-slate-400 border-[var(--border-subtle)]"
+                  }`}
+                >
+                  {t === "utang" ? `Utang ${userCall}` : "Piutang (Di Orang)"}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              required
+              placeholder="Nama Orang / Tempat"
+              value={debtPerson}
+              onChange={(e) => setDebtPerson(e.target.value)}
+              className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+            />
+            <input
+              type="number"
+              placeholder="Nominal Rp (kosongkan jika belum jelas)"
+              value={debtAmount}
+              onChange={(e) => setDebtAmount(e.target.value)}
+              className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+            />
+            <input
+              type="text"
+              placeholder="Catatan (opsional)"
+              value={debtNote}
+              onChange={(e) => setDebtNote(e.target.value)}
+              className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDebtModalOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Simpan"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(settleTarget)}
+          onClose={() => setSettleTarget(null)}
+          title={
+            settleTarget
+              ? `${settleTarget.type === "piutang" ? "Terima Pembayaran Piutang" : "Bayar Utang"}: ${
+                  settleTarget.person
+                }`
+              : ""
+          }
+          maxWidth="max-w-sm"
+        >
+          {settleTarget && (
+            <form onSubmit={handleSettleDebt} className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Nominal (Rp)</label>
+                <input
+                  type="number"
+                  required
+                  value={settleAmount}
+                  onChange={(e) => setSettleAmount(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              {wallets.length > 0 && (
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Masuk ke Sumber Dana</label>
+                  <label className="block text-xs text-slate-400 mb-1">
+                    {settleTarget.type === "piutang" ? "Masuk ke Dana" : "Bayar Pakai Dana"}
+                  </label>
                   <select
-                    value={payInstWalletId}
-                    onChange={(e) => setPayInstWalletId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    value={settleWalletId}
+                    onChange={(e) => setSettleWalletId(e.target.value)}
+                    className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
                   >
                     {wallets
-                      .filter((w) => !w.locked && w.role !== "credit")
+                      .filter((w) => !w.locked && (settleTarget.type !== "piutang" || w.role !== "credit"))
                       .map((w) => (
                         <option key={w.id} value={w.id}>
                           {w.name} ({formatRupiah(w.balance)})
@@ -2863,46 +2659,713 @@ export default function TabunganPage() {
                       ))}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={payInstLogTx}
-                    onChange={(e) => setPayInstLogTx(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-900"
-                  />
-                  <span>Catat pemasukan &amp; tambah saldo dompet</span>
-                </label>
+              )}
+              {settleTarget.amount > 0 &&
+                Number(settleAmount) > 0 &&
+                Number(settleAmount) < Number(settleTarget.amount) && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs font-medium text-amber-200">
+                    Cicilan sebagian: sisa{" "}
+                    <span className="font-mono-num font-bold">
+                      {formatRupiah(Number(settleTarget.amount) - Number(settleAmount))}
+                    </span>{" "}
+                    tetap di Belum Dibayar.
+                  </div>
+                )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSettleTarget(null)}
+                  className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs flex items-center gap-1.5 pressable"
+                >
+                  {actionLoading ? (
+                    <Spinner className="w-3.5 h-3.5" />
+                  ) : (
+                    <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                  <span>
+                    {actionLoading
+                      ? "Memproses..."
+                      : settleTarget.amount > 0 &&
+                        Number(settleAmount) > 0 &&
+                        Number(settleAmount) < Number(settleTarget.amount)
+                      ? "Catat Cicilan"
+                      : "Konfirmasi Lunas"}
+                  </span>
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(adjustTarget)}
+          onClose={() => setAdjustTarget(null)}
+          title={
+            adjustTarget
+              ? `Sesuaikan ${adjustTarget.type === "piutang" ? "Piutang" : "Utang"}: ${
+                  adjustTarget.person
+                }`
+              : ""
+          }
+          subtitle={
+            adjustTarget
+              ? `Nominal saat ini: ${formatRupiah(Number(adjustTarget.amount) || 0)}`
+              : ""
+          }
+          maxWidth="max-w-sm"
+        >
+          {adjustTarget && (() => {
+            const prev = Number(adjustTarget.amount) || 0;
+            const amtNum = Number(adjustAmount) || 0;
+            const signedDelta = (adjustMode === "sub" ? -1 : 1) * amtNum;
+            const nextSigned = prev + signedDelta;
+            const curLabel = adjustTarget.type === "piutang" ? "Piutang" : "Utang";
+            const flippedLabel = adjustTarget.type === "piutang" ? "Utang" : "Piutang";
+            return (
+              <form onSubmit={handleAdjustDebt} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: "sub", label: "− Kurangi" },
+                    { id: "add", label: "+ Tambah" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setAdjustMode(m.id)}
+                      className={`py-2 rounded-xl text-xs font-semibold border transition ${
+                        adjustMode === m.id
+                          ? m.id === "sub"
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            : "bg-accent-500/20 text-accent-200 border-accent-500/40"
+                          : "bg-[var(--bg-inset)] text-slate-400 border-[var(--border-subtle)]"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
                 <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Catatan (opsional)</label>
+                  <label className="block text-xs text-slate-400 mb-1">Nominal (Rp)</label>
                   <input
-                    type="text"
-                    placeholder="Misal: Cicilan bulan Nov"
-                    value={payInstNote}
-                    onChange={(e) => setPayInstNote(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100"
+                    type="number"
+                    min="1"
+                    required
+                    autoFocus
+                    placeholder="Misal: 79000"
+                    value={adjustAmount}
+                    onChange={(e) => setAdjustAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
                   />
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">
+                    Catatan / Alasan (opsional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Misal: bayar sebagian"
+                    value={adjustReason}
+                    onChange={(e) => setAdjustReason(e.target.value)}
+                    className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                  />
+                </div>
+                {amtNum > 0 && (
+                  <div className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] text-xs font-semibold text-slate-100">
+                    {formatRupiah(prev)} {adjustMode === "sub" ? "−" : "+"} {formatRupiah(amtNum)} ={" "}
+                    {nextSigned === 0 ? (
+                      <span className="text-emerald-400 font-bold">Impas (Rp 0, Lunas)</span>
+                    ) : nextSigned > 0 ? (
+                      <span className="text-accent-300 font-bold">
+                        Sisa {curLabel} {formatRupiah(nextSigned)}
+                      </span>
+                    ) : (
+                      <span className="text-amber-300 font-bold">
+                        Berbalik jadi {flippedLabel} {formatRupiah(Math.abs(nextSigned))}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => setPayInstTarget(null)}
-                    className="px-3 py-1.5 text-xs text-slate-400"
+                    onClick={() => setAdjustTarget(null)}
+                    className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition"
+                    disabled={actionLoading || amtNum <= 0}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
                   >
-                    {actionLoading ? <Spinner className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                    <span>{actionLoading ? "Memproses..." : "Catat Cicilan Masuk"}</span>
+                    {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                    <span>{actionLoading ? "Menyimpan..." : "Simpan Perubahan"}</span>
                   </button>
                 </div>
               </form>
+            );
+          })()}
+        </Modal>
+
+        <Modal
+          isOpen={wishModalOpen}
+          onClose={() => setWishModalOpen(false)}
+          title={editingWish ? "Edit Barang Incaran" : "Tambah Barang Incaran"}
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handleSaveWishlist} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nama Barang</label>
+              <input
+                type="text"
+                required
+                autoFocus
+                placeholder="Misal: Keyboard Mechanical"
+                value={wishName}
+                onChange={(e) => setWishName(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Harga (Rp)</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="1500000"
+                  value={wishPrice}
+                  onChange={(e) => setWishPrice(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Sudah Terkumpul</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={wishSaved}
+                  onChange={(e) => setWishSaved(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Prioritas</label>
+              <select
+                value={wishPriority}
+                onChange={(e) => setWishPriority(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              >
+                <option value="high">Prioritas Tinggi</option>
+                <option value="medium">Sedang</option>
+                <option value="low">Santai</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Link Produk (opsional)</label>
+              <input
+                type="url"
+                placeholder="https://..."
+                value={wishUrl}
+                onChange={(e) => setWishUrl(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Catatan (opsional)</label>
+              <input
+                type="text"
+                placeholder="Misal: tunggu promo gajian"
+                value={wishNote}
+                onChange={(e) => setWishNote(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setWishModalOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Simpan Item"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(buyWishTarget)}
+          onClose={() => setBuyWishTarget(null)}
+          title={buyWishTarget ? `Beli Item: ${buyWishTarget.name}` : ""}
+          maxWidth="max-w-sm"
+        >
+          <form onSubmit={handleBuyWishlist} className="space-y-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Nominal Beli (Rp)</label>
+              <input
+                type="number"
+                min="1"
+                required
+                value={buyWishAmount}
+                onChange={(e) => setBuyWishAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={buyWishLogTx}
+                onChange={(e) => setBuyWishLogTx(e.target.checked)}
+                className="rounded border-[var(--border-default)] bg-[var(--bg-inset)]"
+              />
+              <span>Catat pengeluaran &amp; potong saldo dompet</span>
+            </label>
+            {buyWishLogTx && (
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Pakai Sumber Dana</label>
+                <select
+                  value={buyWishWalletId}
+                  onChange={(e) => setBuyWishWalletId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                >
+                  {wallets
+                    .filter((w) => !w.locked)
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({formatRupiah(w.balance)})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setBuyWishTarget(null)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs flex items-center gap-1.5 pressable"
+              >
+                {actionLoading ? (
+                  <Spinner className="w-3.5 h-3.5" />
+                ) : (
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                )}
+                <span>{actionLoading ? "Memproses..." : "Konfirmasi Dibeli"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={planModalOpen}
+          onClose={() => setPlanModalOpen(false)}
+          title="Template Alokasi Gajian"
+          subtitle={`Total alokasi: ${formatRupiah(
+            planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+          )} · Sisa harian: ${formatRupiah(
+            Math.max(
+              0,
+              (Number(data?.profile?.monthlyIncome) || 0) -
+                planDraft.reduce((a, x) => a + (Number(x.amount) || 0), 0)
+            )
+          )}`}
+          maxWidth="max-w-2xl"
+        >
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() =>
+                setPlanDraft([
+                  ...planDraft,
+                  {
+                    id: `pd_${Date.now()}_${planDraft.length}`,
+                    label: "",
+                    type: "transfer",
+                    amount: 0,
+                    fromWalletId: "bni",
+                    toWalletId: "saqu",
+                    billId: "",
+                    note: "",
+                  },
+                ])
+              }
+              className="px-3 py-1.5 rounded-lg bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-slate-200 text-xs font-semibold pressable"
+            >
+              + Tambah Baris
+            </button>
           </div>
-        )}
+
+          <form onSubmit={handleSavePaydayPlan} className="space-y-3">
+            <div className="space-y-2.5">
+              {planDraft.map((row, idx) => (
+                <div
+                  key={row.id || idx}
+                  className="p-3 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2 text-xs"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Nama pos (mis. Dana Darurat)"
+                      value={row.label}
+                      onChange={(e) => {
+                        const next = [...planDraft];
+                        next[idx] = { ...row, label: e.target.value };
+                        setPlanDraft(next);
+                      }}
+                      className="sm:col-span-5 px-2.5 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-100"
+                    />
+                    <select
+                      value={row.type}
+                      onChange={(e) => {
+                        const next = [...planDraft];
+                        next[idx] = { ...row, type: e.target.value };
+                        setPlanDraft(next);
+                      }}
+                      className="sm:col-span-3 px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-100"
+                    >
+                      <option value="transfer">Transfer Dompet</option>
+                      <option value="bill">Bayar Tagihan</option>
+                      <option value="note">Catatan Saja</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Nominal"
+                      value={row.amount}
+                      onChange={(e) => {
+                        const next = [...planDraft];
+                        next[idx] = { ...row, amount: Number(e.target.value) || 0 };
+                        setPlanDraft(next);
+                      }}
+                      className="sm:col-span-3 px-2.5 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-100 font-mono-num"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPlanDraft(planDraft.filter((_, i) => i !== idx))}
+                      aria-label="Hapus baris"
+                      className="sm:col-span-1 p-1.5 text-slate-400 hover:text-rose-300 flex items-center justify-center"
+                      title="Hapus baris"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select
+                      value={row.fromWalletId || ""}
+                      onChange={(e) => {
+                        const next = [...planDraft];
+                        next[idx] = { ...row, fromWalletId: e.target.value };
+                        setPlanDraft(next);
+                      }}
+                      className="px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-200 text-xs"
+                    >
+                      <option value="">Dari: (opsional)</option>
+                      {wallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          Dari: {w.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {row.type === "bill" ? (
+                      <select
+                        value={row.billId || ""}
+                        onChange={(e) => {
+                          const next = [...planDraft];
+                          next[idx] = { ...row, billId: e.target.value };
+                          setPlanDraft(next);
+                        }}
+                        className="px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-200 text-xs"
+                      >
+                        <option value="">Pilih Tagihan</option>
+                        {(data?.profile?.fixedCosts || []).map((fc) => (
+                          <option key={fc.id} value={fc.id}>
+                            {fc.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={row.toWalletId || ""}
+                        onChange={(e) => {
+                          const next = [...planDraft];
+                          next[idx] = { ...row, toWalletId: e.target.value };
+                          setPlanDraft(next);
+                        }}
+                        className="px-2 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-200 text-xs"
+                      >
+                        <option value="">Ke: (opsional)</option>
+                        {wallets.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            Ke: {w.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <input
+                      type="text"
+                      placeholder="Catatan singkat"
+                      value={row.note || ""}
+                      onChange={(e) => {
+                        const next = [...planDraft];
+                        next[idx] = { ...row, note: e.target.value };
+                        setPlanDraft(next);
+                      }}
+                      className="px-2.5 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg text-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPlanModalOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Simpan Template"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={instModalOpen}
+          onClose={() => setInstModalOpen(false)}
+          title={editingInst ? "Edit Cicilan Berjangka" : "Tambah Cicilan Berjangka"}
+        >
+          <form onSubmit={handleSaveInstallment} className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Nama Orang</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Misal: Budi"
+                  value={instPerson}
+                  onChange={(e) => setInstPerson(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Label Cicilan</label>
+                <input
+                  type="text"
+                  placeholder="Cicilan Laptop"
+                  value={instLabel}
+                  onChange={(e) => setInstLabel(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Total Pokok (Rp)</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  placeholder="10000000"
+                  value={instTotal}
+                  onChange={(e) => setInstTotal(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Cicilan / Bulan (Rp)</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  placeholder="1000000"
+                  value={instMonthly}
+                  onChange={(e) => setInstMonthly(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Tanggal Jatuh Tempo (1-28)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="28"
+                  required
+                  value={instDueDay}
+                  onChange={(e) => setInstDueDay(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Masuk ke Dompet</label>
+                <select
+                  value={instTargetWalletId}
+                  onChange={(e) => setInstTargetWalletId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                >
+                  <option value="">Pilih Dompet Tujuan</option>
+                  {wallets
+                    .filter((w) => !w.locked && w.role !== "credit")
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Catatan (opsional)</label>
+              <input
+                type="text"
+                placeholder="Misal: Rencana untuk RDPU/DCA"
+                value={instNote}
+                onChange={(e) => setInstNote(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setInstModalOpen(false)}
+                className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+              >
+                {actionLoading && <Spinner className="w-3.5 h-3.5" />}
+                <span>{actionLoading ? "Menyimpan..." : "Simpan Cicilan"}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(payInstTarget)}
+          onClose={() => setPayInstTarget(null)}
+          title={
+            payInstTarget
+              ? `Terima Cicilan: ${payInstTarget.label || payInstTarget.person}`
+              : ""
+          }
+          subtitle={
+            payInstTarget
+              ? `Progress saat ini: ${payInstTarget.paidCount}/${payInstTarget.totalMonths} bln`
+              : ""
+          }
+          maxWidth="max-w-sm"
+        >
+          {payInstTarget && (
+            <form onSubmit={handlePayInstallment} className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Nominal Diterima (Rp)</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={payInstAmount}
+                  onChange={(e) => setPayInstAmount(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 font-mono-num focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Masuk ke Sumber Dana</label>
+                <select
+                  value={payInstWalletId}
+                  onChange={(e) => setPayInstWalletId(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                >
+                  {wallets
+                    .filter((w) => !w.locked && w.role !== "credit")
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({formatRupiah(w.balance)})
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={payInstLogTx}
+                  onChange={(e) => setPayInstLogTx(e.target.checked)}
+                  className="rounded border-[var(--border-default)] bg-[var(--bg-inset)]"
+                />
+                <span>Catat pemasukan &amp; tambah saldo dompet</span>
+              </label>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Catatan (opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Misal: Cicilan bulan Nov"
+                  value={payInstNote}
+                  onChange={(e) => setPayInstNote(e.target.value)}
+                  className="w-full px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPayInstTarget(null)}
+                  className="px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-[var(--cta-ink)] font-semibold text-xs pressable"
+                >
+                  {actionLoading ? (
+                    <Spinner className="w-3.5 h-3.5" />
+                  ) : (
+                    <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                  <span>{actionLoading ? "Memproses..." : "Catat Cicilan Masuk"}</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
       </main>
 
       <QuickLogModal
@@ -2910,6 +3373,7 @@ export default function TabunganPage() {
         onClose={() => setQuickLogOpen(false)}
         onSuccess={() => reload()}
         wallets={wallets}
+        agentName={agent.name}
       />
     </div>
   );

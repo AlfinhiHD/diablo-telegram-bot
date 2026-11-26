@@ -1,89 +1,226 @@
 @import "tailwindcss";
 
 @theme {
-  /* Lucario Brand Accent (Blue & Aura Cyan) */
+  /* Lucario Steel-Navy Brand Accent */
   --color-accent-200: #b9ecfd;
   --color-accent-300: #66d9ef;
-  --color-accent-400: #65a6df;
-  --color-accent-500: #5c98cd;
+  --color-accent-400: #78b6ec;
+  --color-accent-500: #63a4de;
   --color-accent-600: #4a82b5;
 
-  /* Lucario Steel-Navy Neutral Scale */
-  --color-slate-100: #f8f8f2;
-  --color-slate-200: #eaece6;
-  --color-slate-300: #d5dbe2;
-  --color-slate-400: #a3b3c4;
-  --color-slate-500: #8597aa;
-  --color-slate-600: #6a7d92;
-  --color-slate-700: #435d75;
-  --color-slate-800: #344a5e;
-  --color-slate-900: #1e2c39;
-  --color-slate-950: #141c25;
+  /* Lucario Steel-Navy Neutral Scale (WCAG AA contrast calibrated) */
+  --color-slate-100: #f4f6f8;
+  --color-slate-200: #e2e8ef;
+  --color-slate-300: #cfd9e4;
+  --color-slate-400: #b5c4d4;
+  --color-slate-500: #8b9fb3;
+  --color-slate-600: #667b90;
+  --color-slate-700: #384c61;
+  --color-slate-800: #263647;
+  --color-slate-900: #17222e;
+  --color-slate-950: #111922;
 
-  /* Lucario Semantic Status Scales */
+  /* Semantic Status Scales */
   --color-emerald-200: #c2ebba;
   --color-emerald-300: #93da83;
-  --color-emerald-400: #72cc5a;
-  --color-emerald-500: #72c05d;
-  --color-emerald-950: #162b20;
+  --color-emerald-400: #6fd078;
+  --color-emerald-500: #5bb864;
+  --color-emerald-950: #14261c;
 
   --color-teal-400: #66d9ef;
 
-  --color-amber-200: #f4eba2;
-  --color-amber-300: #e6db74;
-  --color-amber-400: #ffbc4f;
-  --color-amber-500: #ffab28;
+  --color-amber-200: #f6e7a6;
+  --color-amber-300: #f4cd74;
+  --color-amber-400: #f2b649;
+  --color-amber-500: #e29e28;
 
-  --color-rose-300: #ffa08a;
-  --color-rose-400: #ff8266;
-  --color-rose-500: #ff6541;
+  --color-rose-300: #fca597;
+  --color-rose-400: #f27461;
+  --color-rose-500: #e25b47;
 
-  --color-purple-300: #d4a9ff;
-  --color-purple-400: #ca94ff;
-  --color-purple-500: #b87af5;
+  --color-purple-300: #d39cf0;
+  --color-purple-400: #c282e6;
+  --color-purple-500: #ad66d6;
 
-  --color-blue-400: #65a6df;
-  --color-blue-500: #5c98cd;
+  --color-blue-300: #9cc8f3;
+  --color-blue-400: #78b6ec;
+  --color-blue-500: #63a4de;
 
+  --color-sky-300: #8de4f7;
   --color-sky-400: #66d9ef;
-  --color-sky-500: #66d9ef;
+  --color-sky-500: #50c2da;
 
-  --color-fuchsia-400: #fa73a4;
-  --color-fuchsia-500: #f92672;
+  --color-fuchsia-400: #e082c8;
+  --color-fuchsia-500: #d39cf0;
 }
 
 :root {
-  --color-background: #19242f;
-  --color-primary: #2b3e50;
-  --color-secondary: #243343;
-  --color-cta: #5c98cd;
+  --bg-canvas: #111922;
+  --bg-surface: #17222e;
+  --bg-elevated: #1e2c3b;
+  --bg-inset: #121b25;
+  --bg-active: #1e2d3f;
+  --bg-modal: #192533;
+  --bg-nav: rgba(17, 25, 34, 0.88);
+  --bg-dock: rgba(20, 30, 41, 0.95);
+  --bg-backdrop: rgba(8, 13, 20, 0.75);
+  --border-subtle: rgba(163, 189, 214, 0.11);
+  --border-default: rgba(163, 189, 214, 0.19);
+  --border-strong: rgba(163, 189, 214, 0.28);
+  --track-bg: rgba(255, 255, 255, 0.07);
+  --hover-tint: rgba(255, 255, 255, 0.04);
+  --cta-ink: #0b131c;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  --color-background: #111922;
+  --color-primary: #17222e;
+  --color-secondary: #1e2c3b;
+  --color-cta: #63a4de;
   --color-accent: #66d9ef;
-  --color-positive: #72c05d;
-  --color-text: #f8f8f2;
-  --color-muted: #99a8b8;
+  --color-positive: #6fd078;
+  --color-text: #f4f6f8;
+  --color-muted: #8b9fb3;
 
-  --shadow-sm: 0 1px 2px rgba(15, 22, 28, 0.35);
-  --shadow-md: 0 8px 24px -4px rgba(15, 22, 28, 0.5);
-  --shadow-lg: 0 16px 36px -6px rgba(15, 22, 28, 0.65);
+  --shadow-sm: 0 1px 2px rgba(6, 11, 17, 0.4);
+  --shadow-md: 0 6px 20px -4px rgba(6, 11, 17, 0.45);
+  --shadow-lg: 0 18px 40px -8px rgba(4, 8, 13, 0.65);
 }
 
-* {
-  box-sizing: border-box;
+/* Porcelain Steel & Lucario Cobalt Light Mode (WCAG AA parity) */
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --color-accent-200: #154e85;
+  --color-accent-300: #1d64a8;
+  --color-accent-400: #2473be;
+  --color-accent-500: #2979c4;
+  --color-accent-600: #1d5d9a;
+
+  --color-slate-100: #0f1b29;
+  --color-slate-200: #1e2f42;
+  --color-slate-300: #33485e;
+  --color-slate-400: #4f657c;
+  --color-slate-500: #5d738a;
+  --color-slate-600: #8fa3b8;
+  --color-slate-700: #c6d3e1;
+  --color-slate-800: #dde6f0;
+  --color-slate-900: #edf2f8;
+  --color-slate-950: #f3f6fa;
+
+  --color-emerald-200: #115e34;
+  --color-emerald-300: #15733f;
+  --color-emerald-400: #15803d;
+  --color-emerald-500: #16a34a;
+  --color-emerald-950: #e6f6ec;
+
+  --color-amber-200: #7a4b05;
+  --color-amber-300: #9a5b06;
+  --color-amber-400: #b46909;
+  --color-amber-500: #d97706;
+
+  --color-rose-200: #991b1b;
+  --color-rose-300: #b91c1c;
+  --color-rose-400: #dc2626;
+  --color-rose-500: #e11d48;
+
+  --color-purple-300: #7e22ce;
+  --color-purple-400: #9333ea;
+  --color-purple-500: #9333ea;
+
+  --color-blue-300: #1d4ed8;
+  --color-blue-400: #2563eb;
+  --color-blue-500: #2563eb;
+
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-sky-500: #0284c7;
+
+  --bg-canvas: #f3f6fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #edf3f9;
+  --bg-inset: #eef3f8;
+  --bg-active: #dfeaf6;
+  --bg-modal: #ffffff;
+  --bg-nav: rgba(255, 255, 255, 0.88);
+  --bg-dock: rgba(255, 255, 255, 0.94);
+  --bg-backdrop: rgba(15, 27, 41, 0.45);
+  --border-subtle: rgba(21, 41, 66, 0.10);
+  --border-default: rgba(21, 41, 66, 0.18);
+  --border-strong: rgba(21, 41, 66, 0.28);
+  --track-bg: rgba(21, 41, 66, 0.08);
+  --hover-tint: rgba(21, 41, 66, 0.04);
+  --cta-ink: #ffffff;
+
+  --color-background: #f3f6fa;
+  --color-primary: #ffffff;
+  --color-secondary: #edf3f9;
+  --color-cta: #2979c4;
+  --color-accent: #1d64a8;
+  --color-positive: #15803d;
+  --color-text: #0f1b29;
+  --color-muted: #5d738a;
+
+  --shadow-sm: 0 1px 3px rgba(15, 27, 41, 0.06), 0 1px 2px rgba(15, 27, 41, 0.04);
+  --shadow-md: 0 10px 26px -10px rgba(15, 27, 41, 0.12);
+  --shadow-lg: 0 20px 44px -14px rgba(15, 27, 41, 0.20);
 }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-text);
-  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  overflow-x: hidden;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--color-text);
+    font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  a[href],
+  button:not(:disabled),
+  select:not(:disabled),
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+
+  input,
+  textarea {
+    caret-color: #66d9ef;
+  }
+
+  html[data-theme="light"] input,
+  html[data-theme="light"] textarea {
+    caret-color: #1d64a8;
+  }
+
+  :focus-visible {
+    outline: 2px solid #66d9ef;
+    outline-offset: 2px;
+  }
+
+  html[data-theme="light"] :focus-visible {
+    outline: 2px solid #1d64a8;
+    outline-offset: 2px;
+  }
 }
 
 .font-heading {
   font-family: var(--font-heading), var(--font-sans), sans-serif;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .font-mono-num {
@@ -91,43 +228,211 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Lucario Steel-Blue Ambient Canvas */
+/* Calm Canvas */
 .bg-fintech-canvas {
   background:
-    radial-gradient(ellipse 80% 45% at 50% -12%, rgba(92, 152, 205, 0.16), transparent),
-    radial-gradient(ellipse 55% 38% at 88% 8%, rgba(102, 217, 239, 0.08), transparent),
-    linear-gradient(180deg, #19242f 0%, #141c25 100%);
+    radial-gradient(ellipse 70% 35% at 50% -15%, rgba(99, 164, 222, 0.11), transparent),
+    var(--bg-canvas);
 }
 
-/* Clean Bento Surface Layers */
-.bento-card {
-  background: linear-gradient(180deg, rgba(43, 62, 80, 0.92) 0%, rgba(36, 51, 67, 0.96) 100%);
-  border: 1px solid rgba(92, 152, 205, 0.22);
+html[data-theme="light"] .bg-fintech-canvas {
+  background:
+    radial-gradient(ellipse 75% 40% at 50% -12%, rgba(41, 121, 196, 0.10), transparent),
+    #f3f6fa;
+}
+
+/* Centerpiece Vault */
+.hero-vault {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #1b2a3a 0%, #141f2c 55%, #111a25 100%);
+  border: 1px solid rgba(163, 189, 214, 0.17);
   box-shadow:
-    var(--shadow-md),
-    inset 0 1px 0 0 rgba(248, 248, 242, 0.06);
-  backdrop-filter: blur(16px);
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+    0 14px 36px -14px rgba(3, 8, 15, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.bento-card:hover {
-  border-color: rgba(102, 217, 239, 0.34);
+html[data-theme="light"] .hero-vault {
+  background: linear-gradient(160deg, #ffffff 0%, #f6f9fd 65%, #edf3fa 100%);
+  border: 1px solid rgba(21, 41, 66, 0.13);
+  box-shadow:
+    0 14px 32px -16px rgba(15, 27, 41, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-.bento-subcard {
-  background: rgba(36, 51, 67, 0.84);
-  border: 1px solid rgba(153, 168, 184, 0.16);
+.hero-vault > * {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-vault::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(102, 217, 239, 0.42), transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+html[data-theme="light"] .hero-vault::before {
+  background: linear-gradient(90deg, transparent, rgba(41, 121, 196, 0.45), transparent);
+}
+
+.hero-vault::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-vault[data-tone="safe"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(111, 208, 120, 0.14), transparent 54%);
+}
+
+.hero-vault[data-tone="danger"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(242, 116, 97, 0.15), transparent 54%);
+}
+
+.hero-vault[data-tone="accent"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(99, 164, 222, 0.16), transparent 54%);
+}
+
+html[data-theme="light"] .hero-vault[data-tone="safe"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(22, 163, 74, 0.08), transparent 54%);
+}
+
+html[data-theme="light"] .hero-vault[data-tone="danger"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(220, 38, 38, 0.08), transparent 54%);
+}
+
+html[data-theme="light"] .hero-vault[data-tone="accent"]::after {
+  background: radial-gradient(circle at 92% 14%, rgba(41, 121, 196, 0.10), transparent 54%);
+}
+
+/* Tactile Wallet Tile */
+.wallet-tile {
+  background: linear-gradient(170deg, rgba(30, 44, 60, 0.95), rgba(20, 31, 43, 0.98));
+  border: 1px solid rgba(163, 189, 214, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 4px 12px -6px rgba(3, 8, 15, 0.55);
+  transition:
+    transform 180ms var(--ease-out),
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+html[data-theme="light"] .wallet-tile {
+  background: linear-gradient(170deg, #ffffff, #f6f9fd);
+  border: 1px solid rgba(21, 41, 66, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 4px 12px -6px rgba(15, 27, 41, 0.10);
+}
+
+/* Lucario Primary Button Specular Lip */
+.btn-primary-diablo {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 4px 14px -4px rgba(99, 164, 222, 0.4);
+}
+
+html[data-theme="light"] .btn-primary-diablo {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 4px 12px -4px rgba(41, 121, 196, 0.35);
+}
+
+/* Smooth SVG & Bar Chart Fills */
+.chart-bar-fill {
+  transition:
+    height 420ms var(--ease-out),
+    width 420ms var(--ease-out);
+}
+
+/* Matte Surface Layers */
+.surface-card,
+.bento-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
   transition: border-color 180ms ease, background-color 180ms ease;
 }
 
-.bento-subcard:hover {
-  border-color: rgba(92, 152, 205, 0.4);
-  background: rgba(43, 62, 80, 0.92);
+.surface-inset,
+.bento-subcard {
+  background-color: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.surface-elevated {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .surface-card:hover,
+  .bento-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .surface-inset:hover,
+  .bento-subcard:hover {
+    border-color: var(--border-strong);
+  }
+
+  .wallet-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+  }
+}
+
+/* Tactile Press Affordance */
+.pressable {
+  transition:
+    transform 150ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Modal Entrance */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-panel {
+  animation: modal-enter 180ms var(--ease-out) both;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 select option {
-  background-color: #19242f;
-  color: #f8f8f2;
+  background-color: var(--bg-surface);
+  color: var(--color-text);
 }
 
 /* Custom Scrollbar */
@@ -136,14 +441,14 @@ select option {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #141c25;
+  background: var(--bg-canvas);
 }
 ::-webkit-scrollbar-thumb {
-  background: #344a5e;
+  background: var(--border-default);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5c98cd;
+  background: var(--color-cta);
 }
 
 /* Custom Number Inputs - Hide Browser Native Spin Buttons */
@@ -171,12 +476,22 @@ input[type="number"] {
 .skeleton-shimmer {
   background: linear-gradient(
     90deg,
-    rgba(30, 44, 57, 0.72) 25%,
-    rgba(92, 152, 205, 0.14) 50%,
-    rgba(30, 44, 57, 0.72) 75%
+    rgba(23, 34, 46, 0.85) 25%,
+    rgba(99, 164, 222, 0.14) 50%,
+    rgba(23, 34, 46, 0.85) 75%
   );
   background-size: 200% 100%;
   animation: diablo-shimmer 1.6s ease-in-out infinite;
+}
+
+html[data-theme="light"] .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 234, 243, 0.85) 25%,
+    rgba(41, 121, 196, 0.13) 50%,
+    rgba(226, 234, 243, 0.85) 75%
+  );
+  background-size: 200% 100%;
 }
 
 @keyframes diablo-top-bar {
@@ -190,6 +505,28 @@ input[type="number"] {
 
 .top-loading-bar {
   width: 30%;
-  background: linear-gradient(90deg, transparent, #66d9ef, #5c98cd, transparent);
+  background: linear-gradient(90deg, transparent, var(--color-accent), var(--color-cta), transparent);
   animation: diablo-top-bar 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer,
+  .top-loading-bar,
+  .modal-panel {
+    animation: none !important;
+  }
+
+  .chart-bar-fill {
+    transition: none;
+  }
+
+  .pressable,
+  .wallet-tile {
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+
+  .pressable:active:not(:disabled),
+  .wallet-tile:hover {
+    transform: none;
+  }
 }

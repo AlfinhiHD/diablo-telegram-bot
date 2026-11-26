@@ -1,22 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { X, Sparkles, Send, Wallet } from "lucide-react";
+import { Send, Wallet } from "lucide-react";
+import Modal from "./Modal";
 import { Spinner } from "./DiabloLoader";
 
-export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = [] }) {
+export default function QuickLogModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  wallets = [],
+  agentName = "Diablo",
+}) {
   const [text, setText] = useState("");
   const [walletId, setWalletId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  if (!isOpen) return null;
-
   const activeWallets = (wallets || []).filter((w) => !w.locked);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!text.trim()) return;
+  async function submitEntry() {
+    if (!text.trim() || loading) return;
 
     setLoading(true);
     setError(null);
@@ -48,116 +52,115 @@ export default function QuickLogModal({ isOpen, onClose, onSuccess, wallets = []
     }
   }
 
+  function handleSubmit(e) {
+    e.preventDefault();
+    submitEntry();
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md bento-card rounded-2xl p-6 border border-slate-800 shadow-2xl space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-accent-500/15 border border-accent-500/35 flex items-center justify-center text-accent-300">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <h3 className="font-heading font-semibold text-slate-100 text-sm">
-              Catat Pengeluaran Cepat
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Catat Pengeluaran Cepat"
+      subtitle={`Tulis bebas seperti chat ke ${agentName}. AI membedakan masuk, keluar, dan kategori.`}
+    >
+      {error && (
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="quick-log-input" className="block text-xs text-slate-400 mb-1.5">
+            Nominal dan keterangan
+          </label>
+          <textarea
+            id="quick-log-input"
+            autoFocus
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                submitEntry();
+              }
+            }}
+            placeholder={
+              "Contoh keluar: kopi 15k & makan siang 20k\nContoh masuk: dapet duit 50k dari freelance"
+            }
+            className="w-full px-3.5 py-2.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-accent-500 transition resize-none font-sans"
+          />
+          <p className="text-[11px] text-slate-500 mt-1.5">
+            Tekan Ctrl+Enter untuk simpan cepat.
+          </p>
         </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            {error}
+        {activeWallets.length > 0 && (
+          <div>
+            <span className="flex items-center gap-1.5 text-xs text-slate-400 mb-2">
+              <Wallet className="w-3.5 h-3.5 text-accent-300" aria-hidden="true" />
+              <span>Sumber / Tujuan Dana</span>
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setWalletId("")}
+                className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-medium transition border pressable ${
+                  walletId === ""
+                    ? "bg-accent-500/20 text-accent-300 border-accent-500/45"
+                    : "bg-[var(--bg-inset)] text-slate-400 border-[var(--border-subtle)] hover:text-slate-200"
+                }`}
+              >
+                Auto / Default
+              </button>
+              {activeWallets.map((w) => (
+                <button
+                  key={w.id}
+                  type="button"
+                  onClick={() => setWalletId(w.id)}
+                  className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-medium transition border pressable ${
+                    walletId === w.id
+                      ? "bg-accent-500/20 text-accent-300 border-accent-500/45"
+                      : "bg-[var(--bg-inset)] text-slate-400 border-[var(--border-subtle)] hover:text-slate-200"
+                  }`}
+                >
+                  {w.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5">
-              Ketik pengeluaran atau pemasukan seperti chat ke Diablo:
-            </label>
-            <textarea
-              autoFocus
-              rows={3}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={"Contoh keluar: kopi 15k & makan siang 20k\nContoh masuk: dapet duit 50k dari ngamen"}
-              className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-accent-500 transition resize-none font-sans"
-            />
-            <p className="text-[11px] text-slate-500 mt-1">
-              AI Diablo otomatis bedakan pengeluaran vs pemasukan, kategori, dan intent.
-            </p>
-          </div>
-
-          {activeWallets.length > 0 && (
-            <div>
-              <label className="flex items-center gap-1.5 text-xs text-slate-400 mb-1.5">
-                <Wallet className="w-3.5 h-3.5 text-accent-300" />
-                <span>Sumber / Tujuan Dana</span>
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setWalletId("")}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
-                    walletId === ""
-                      ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
-                      : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
-                  }`}
-                >
-                  Auto / Default
-                </button>
-                {activeWallets.map((w) => (
-                  <button
-                    key={w.id}
-                    type="button"
-                    onClick={() => setWalletId(w.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition border ${
-                      walletId === w.id
-                        ? "bg-accent-500/20 text-accent-300 border-accent-500/40"
-                        : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200"
-                    }`}
-                  >
-                    {w.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !text.trim()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-slate-950 text-xs font-semibold transition shadow-lg shadow-accent-500/20"
-            >
-              {loading ? (
-                <>
-                  <Spinner className="w-3.5 h-3.5" />
-                  <span>Mencatat...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Simpan Catatan</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="min-h-[38px] px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-[var(--hover-tint)] pressable"
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !text.trim()}
+            className="min-h-[38px] flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-[var(--cta-ink)] text-xs font-semibold btn-primary-diablo pressable"
+          >
+            {loading ? (
+              <>
+                <Spinner className="w-3.5 h-3.5" />
+                <span>Mencatat...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Simpan Catatan</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
