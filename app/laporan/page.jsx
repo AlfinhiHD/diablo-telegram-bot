@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
+import SearchInput from "@/components/SearchInput";
 import { IntentDonut, RoutineIcon } from "@/components/FinanceCharts";
 import { PageSkeleton, DiabloScreenLoader } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
@@ -30,6 +31,10 @@ function LaporanContent() {
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState(urlPeriod);
   const [reportTab, setReportTab] = useState("ringkasan");
+  const [sheetQuery, setSheetQuery] = useState("");
+  const [sheetStatus, setSheetStatus] = useState("ALL");
+  const [sheetCategory, setSheetCategory] = useState("ALL");
+  const [sheetWallet, setSheetWallet] = useState("ALL");
 
   useEffect(() => {
     setMounted(true);
@@ -62,6 +67,78 @@ function LaporanContent() {
     () => computePeriodReport(profile || {}, transactions, defaultPeriodKey || null),
     [profile, transactions, defaultPeriodKey]
   );
+
+  const sheetCategories = useMemo(() => {
+    const set = new Set();
+    for (const tx of report.transactions) {
+      if (tx.category) set.add(tx.category);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [report.transactions]);
+
+  const sheetWallets = useMemo(() => {
+    const set = new Set();
+    for (const tx of report.transactions) {
+      const w = tx.walletName || tx.paymentMethod;
+      if (w) set.add(w);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [report.transactions]);
+
+  const activeSheetCategory =
+    sheetCategory !== "ALL" && sheetCategories.includes(sheetCategory) ? sheetCategory : "ALL";
+  const activeSheetWallet =
+    sheetWallet !== "ALL" && sheetWallets.includes(sheetWallet) ? sheetWallet : "ALL";
+
+  const filteredSheetTransactions = useMemo(() => {
+    const q = sheetQuery.trim().toLowerCase();
+    return report.transactions.filter((tx) => {
+      const isInc = tx.type === "income";
+      if (sheetStatus === "INCOME" && !isInc) return false;
+      if (sheetStatus !== "ALL" && sheetStatus !== "INCOME") {
+        if (isInc || String(tx.intent || "WANT").toUpperCase() !== sheetStatus) return false;
+      }
+      if (activeSheetCategory !== "ALL" && (tx.category || "") !== activeSheetCategory) {
+        return false;
+      }
+      const wLabel = tx.walletName || tx.paymentMethod || "";
+      if (activeSheetWallet !== "ALL" && wLabel !== activeSheetWallet) return false;
+      if (q) {
+        const hay = `${tx.item || ""} ${tx.category || ""} ${wLabel} ${tx.notes || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [report.transactions, sheetQuery, sheetStatus, activeSheetCategory, activeSheetWallet]);
+
+  const hasSheetFilters =
+    Boolean(sheetQuery.trim()) ||
+    sheetStatus !== "ALL" ||
+    activeSheetCategory !== "ALL" ||
+    activeSheetWallet !== "ALL";
+
+  const filteredSheetOut = useMemo(
+    () =>
+      filteredSheetTransactions
+        .filter((tx) => (tx.type || "expense") !== "income")
+        .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0),
+    [filteredSheetTransactions]
+  );
+
+  const filteredSheetIn = useMemo(
+    () =>
+      filteredSheetTransactions
+        .filter((tx) => tx.type === "income")
+        .reduce((acc, tx) => acc + (Number(tx.amount) || 0), 0),
+    [filteredSheetTransactions]
+  );
+
+  function resetSheetFilters() {
+    setSheetQuery("");
+    setSheetStatus("ALL");
+    setSheetCategory("ALL");
+    setSheetWallet("ALL");
+  }
 
   if (!mounted || (loading && !data)) {
     return (
@@ -582,7 +659,11 @@ function LaporanContent() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-slate-100">
-                  Sheet Transaksi ({report.transactions.length})
+                  Sheet Transaksi (
+                  {hasSheetFilters
+                    ? `${filteredSheetTransactions.length}/${report.transactions.length}`
+                    : report.transactions.length}
+                  )
                 </h2>
                 <p className="text-[11px] text-slate-400">
                   Klik &ldquo;Download Sheet (.csv)&rdquo; di atas untuk membuka lengkap di Google Sheets / Excel.
@@ -597,9 +678,116 @@ function LaporanContent() {
               </Link>
             </div>
 
+            {report.transactions.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                <SearchInput
+                  value={sheetQuery}
+                  onChange={setSheetQuery}
+                  ariaLabel="Cari transaksi di sheet"
+                  placeholder="Cari item, kategori, dana..."
+                  className="flex-1 min-w-[180px]"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Filter status transaksi"
+                    value={sheetStatus}
+                    onChange={(e) => setSheetStatus(e.target.value)}
+                    className="min-h-[36px] flex-1 sm:flex-none px-2.5 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                  >
+                    <option value="ALL">Semua Status</option>
+                    <option value="INCOME">Masuk</option>
+                    <option value="NEED">NEED</option>
+                    <option value="WANT">WANT</option>
+                    <option value="GIFT">GIFT</option>
+                    <option value="ASSET">ASSET</option>
+                  </select>
+
+                  {sheetCategories.length > 0 && (
+                    <select
+                      aria-label="Filter kategori transaksi"
+                      value={activeSheetCategory}
+                      onChange={(e) => setSheetCategory(e.target.value)}
+                      className="min-h-[36px] flex-1 sm:flex-none px-2.5 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                    >
+                      <option value="ALL">Semua Kategori</option>
+                      {sheetCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {sheetWallets.length > 1 && (
+                    <select
+                      aria-label="Filter sumber dana"
+                      value={activeSheetWallet}
+                      onChange={(e) => setSheetWallet(e.target.value)}
+                      className="min-h-[36px] flex-1 sm:flex-none px-2.5 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500"
+                    >
+                      <option value="ALL">Semua Dana</option>
+                      {sheetWallets.map((w) => (
+                        <option key={w} value={w}>
+                          {w}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {hasSheetFilters && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] text-[11px] text-slate-400">
+                <span>
+                  Menampilkan{" "}
+                  <strong className="text-slate-200 font-mono-num">
+                    {filteredSheetTransactions.length}
+                  </strong>{" "}
+                  dari <span className="font-mono-num">{report.transactions.length}</span> transaksi
+                  {filteredSheetOut > 0 && (
+                    <>
+                      {" "}
+                      · Keluar{" "}
+                      <strong className="text-slate-100 font-mono-num">
+                        {formatRupiah(filteredSheetOut)}
+                      </strong>
+                    </>
+                  )}
+                  {filteredSheetIn > 0 && (
+                    <>
+                      {" "}
+                      · Masuk{" "}
+                      <strong className="text-emerald-400 font-mono-num">
+                        +{formatRupiah(filteredSheetIn)}
+                      </strong>
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={resetSheetFilters}
+                  className="text-xs font-medium text-accent-300 hover:text-accent-200"
+                >
+                  Reset filter
+                </button>
+              </div>
+            )}
+
             {report.transactions.length === 0 ? (
               <div className="py-10 text-center text-xs text-slate-400">
                 Belum ada catatan transaksi pada {report.period.label}.
+              </div>
+            ) : filteredSheetTransactions.length === 0 ? (
+              <div className="py-10 text-center space-y-2.5">
+                <p className="text-xs text-slate-400">Tidak ada transaksi sesuai filter.</p>
+                <button
+                  type="button"
+                  onClick={resetSheetFilters}
+                  className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-inset)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                >
+                  Reset Filter
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -615,7 +803,7 @@ function LaporanContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
-                    {report.transactions.map((tx) => {
+                    {filteredSheetTransactions.map((tx) => {
                       const isInc = tx.type === "income";
                       return (
                         <tr key={tx.id} className="hover:bg-[var(--hover-tint)]">

@@ -130,4 +130,42 @@ test.describe("Diablo Finance E2E Testing", () => {
     const cached = await page.evaluate(() => sessionStorage.getItem("diablo_cache_v1"));
     expect(cached).toBeNull();
   });
+
+  test("6. Search & Filter: filters Sheet Transaksi in /laporan and /riwayat", async ({ page, context }) => {
+    const sessionValue = signSession("1128526190");
+    await context.addCookies([
+      {
+        name: SESSION_COOKIE,
+        value: sessionValue,
+        domain: "localhost",
+        path: "/",
+        httpOnly: true,
+      },
+    ]);
+
+    await page.goto("/laporan");
+    const sheetTab = page.getByRole("tab", { name: /Tabel Sheet/i });
+    await expect(sheetTab).toBeVisible();
+    await sheetTab.click();
+
+    const sheetSearch = page.getByLabel("Cari transaksi di sheet");
+    if ((await sheetSearch.count()) > 0) {
+      const rows = page.locator("table tbody tr");
+      const initialRowCount = await rows.count();
+      expect(initialRowCount).toBeGreaterThan(0);
+
+      await sheetSearch.fill("___tidak_ada_xyz___");
+      await expect(page.getByText("Tidak ada transaksi sesuai filter.")).toBeVisible();
+
+      await page.getByRole("button", { name: "Reset Filter", exact: true }).click();
+      await expect(rows).toHaveCount(initialRowCount);
+    }
+
+    await page.goto("/riwayat");
+    const riwayatSearch = page.getByLabel("Cari transaksi");
+    await expect(riwayatSearch).toBeVisible();
+    await riwayatSearch.fill("___tidak_ada_xyz___");
+    await expect(page.getByText("Tidak Ada Transaksi Sesuai Filter")).toBeVisible();
+    await page.getByRole("button", { name: "Reset Filter", exact: true }).click();
+  });
 });

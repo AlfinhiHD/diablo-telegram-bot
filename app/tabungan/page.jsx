@@ -5,6 +5,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import Modal from "@/components/Modal";
 import QuickLogModal from "@/components/QuickLogModal";
+import SearchInput from "@/components/SearchInput";
 import { PaceRing } from "@/components/FinanceCharts";
 import { PageSkeleton, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
@@ -131,6 +132,13 @@ export default function TabunganPage() {
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [planDraft, setPlanDraft] = useState([]);
 
+  // Filter & Search per tab data panjang
+  const [debtSearch, setDebtSearch] = useState("");
+  const [debtFilterType, setDebtFilterType] = useState("ALL");
+  const [instSearch, setInstSearch] = useState("");
+  const [wishSearch, setWishSearch] = useState("");
+  const [wishPriorityFilter, setWishPriorityFilter] = useState("ALL");
+
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -165,6 +173,24 @@ export default function TabunganPage() {
   const paidUtangList = paidDebts.filter((d) => d.type === "utang");
   const paidPiutangList = paidDebts.filter((d) => d.type === "piutang");
 
+  const debtQ = debtSearch.trim().toLowerCase();
+  const matchesDebt = (d) => {
+    if (!debtQ) return true;
+    const wName = d.targetWalletId
+      ? wallets.find((w) => w.id === d.targetWalletId)?.name || d.targetWalletId
+      : "";
+    return `${d.person || ""} ${d.note || ""} ${wName}`.toLowerCase().includes(debtQ);
+  };
+  const filteredUtangList = utangList.filter(matchesDebt);
+  const filteredPiutangList = piutangList.filter(matchesDebt);
+  const filteredPaidUtangList = paidUtangList.filter(matchesDebt);
+  const filteredPaidPiutangList = paidPiutangList.filter(matchesDebt);
+  const hasDebtFilter = Boolean(debtQ) || debtFilterType !== "ALL";
+  const resetDebtFilters = () => {
+    setDebtSearch("");
+    setDebtFilterType("ALL");
+  };
+
   const allInstallments = data?.profile?.installments || [];
   const upcomingInstallments = reminders?.upcomingInstallments || [];
   const activeInstallments =
@@ -174,6 +200,32 @@ export default function TabunganPage() {
   const paidInstallments = allInstallments
     .filter((it) => it.status === "paid")
     .sort((a, b) => new Date(b.paidAt || b.createdAt || 0) - new Date(a.paidAt || a.createdAt || 0));
+
+  const instQ = instSearch.trim().toLowerCase();
+  const matchesInst = (inst) => {
+    if (!instQ) return true;
+    const targetWName = inst.targetWalletId
+      ? wallets.find((w) => w.id === inst.targetWalletId)?.name || inst.targetWalletId
+      : "";
+    return `${inst.label || ""} ${inst.person || ""} ${inst.note || ""} ${targetWName}`
+      .toLowerCase()
+      .includes(instQ);
+  };
+  const filteredActiveInstallments = activeInstallments.filter(matchesInst);
+  const filteredPaidInstallments = paidInstallments.filter(matchesInst);
+
+  const wishQ = wishSearch.trim().toLowerCase();
+  const matchesWishText = (w) =>
+    !wishQ || `${w.name || ""} ${w.note || ""}`.toLowerCase().includes(wishQ);
+  const filteredPlannedWishlists = plannedWishlists.filter(
+    (w) => matchesWishText(w) && (wishPriorityFilter === "ALL" || (w.priority || "medium") === wishPriorityFilter)
+  );
+  const filteredBoughtWishlists = boughtWishlists.filter(matchesWishText);
+  const hasWishFilter = Boolean(wishQ) || (wishlistTab === "planned" && wishPriorityFilter !== "ALL");
+  const resetWishFilters = () => {
+    setWishSearch("");
+    setWishPriorityFilter("ALL");
+  };
   const totalInstallmentRemaining = activeInstallments.reduce(
     (a, it) => a + Math.max(0, (Number(it.totalAmount) || 0) - (Number(it.paidAmount) || 0)),
     0
@@ -1492,41 +1544,65 @@ export default function TabunganPage() {
                 </button>
               </div>
 
-              <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
-                <button
-                  type="button"
-                  onClick={() => setDebtTab("open")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                    debtTab === "open"
-                      ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <span>Belum Dibayar</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                    {openDebts.length}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDebtTab("paid")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                    debtTab === "paid"
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                      : "text-slate-400 hover:text-slate-200 border border-transparent"
-                  }`}
-                >
-                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Sudah Dibayar</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                    {paidDebts.length}
-                  </span>
-                </button>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)] self-start">
+                  <button
+                    type="button"
+                    onClick={() => setDebtTab("open")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                      debtTab === "open"
+                        ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <span>Belum Dibayar</span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                      {openDebts.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDebtTab("paid")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                      debtTab === "paid"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "text-slate-400 hover:text-slate-200 border border-transparent"
+                    }`}
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Sudah Dibayar</span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                      {paidDebts.length}
+                    </span>
+                  </button>
+                </div>
+
+                {allDebts.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 flex-1 sm:max-w-sm">
+                    <SearchInput
+                      value={debtSearch}
+                      onChange={setDebtSearch}
+                      ariaLabel="Cari utang atau piutang"
+                      placeholder="Cari nama atau catatan..."
+                      className="flex-1 min-w-[160px]"
+                    />
+                    <select
+                      aria-label="Filter jenis utang atau piutang"
+                      value={debtFilterType}
+                      onChange={(e) => setDebtFilterType(e.target.value)}
+                      className="min-h-[36px] px-2.5 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500 shrink-0"
+                    >
+                      <option value="ALL">Semua</option>
+                      <option value="utang">Utang</option>
+                      <option value="piutang">Piutang</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               {debtTab === "open" ? (
                 <div className="space-y-4">
-                  {simplifiableGroups.length > 0 && (
+                  {!hasDebtFilter && simplifiableGroups.length > 0 && (
                     <div className="p-3.5 rounded-xl bg-amber-500/[0.08] border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="space-y-1">
                         <div className="text-xs font-semibold text-amber-300">
@@ -1581,12 +1657,12 @@ export default function TabunganPage() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[
+                  {(() => {
+                    const visibleOpenCols = [
                       {
                         key: "utang",
                         title: `Utang ${userCall}`,
-                        list: utangList,
+                        list: filteredUtangList,
                         titleClass: "text-rose-300",
                         totalClass: "text-rose-400",
                         amtClass: "text-rose-300",
@@ -1595,191 +1671,243 @@ export default function TabunganPage() {
                       {
                         key: "piutang",
                         title: "Piutang / Uang di Orang",
-                        list: piutangList,
+                        list: filteredPiutangList,
                         titleClass: "text-emerald-300",
                         totalClass: "text-emerald-400",
                         amtClass: "text-emerald-300",
                         emptyText: "Tidak ada piutang yang belum dibayar.",
                       },
-                    ].map((col) => (
-                      <div key={col.key} className="space-y-2.5">
-                        <div className="flex items-center justify-between text-xs px-0.5">
-                          <span className={`font-semibold ${col.titleClass}`}>
-                            {col.title} ({col.list.length})
-                          </span>
-                          <span className={`font-mono-num font-bold ${col.totalClass}`}>
-                            {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                          </span>
+                    ].filter((col) => debtFilterType === "ALL" || col.key === debtFilterType);
+
+                    if (hasDebtFilter && visibleOpenCols.every((c) => c.list.length === 0)) {
+                      return (
+                        <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                          <p className="text-xs text-slate-400">Tidak ada catatan sesuai filter.</p>
+                          <button
+                            type="button"
+                            onClick={resetDebtFilters}
+                            className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                          >
+                            Reset filter
+                          </button>
                         </div>
+                      );
+                    }
 
-                        {col.list.length === 0 ? (
-                          <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
-                            {col.emptyText}
-                          </p>
-                        ) : (
-                          <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
-                            {col.list.map((d) => (
-                              <div key={d.id} className="p-3.5 space-y-2 text-xs">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-slate-100 text-[13px] truncate">
-                                      {d.person}
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                      <span className={`font-bold font-mono-num text-xs ${col.amtClass}`}>
-                                        {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
-                                      </span>
-                                      {d.ageDays > 0 && (
-                                        <span className="text-[11px] text-slate-400">· {d.ageDays}h</span>
-                                      )}
-                                      {d.isSnoozed && (
-                                        <span className="text-[11px] text-amber-300 font-medium">· snooze</span>
-                                      )}
-                                    </div>
-                                  </div>
+                    return (
+                      <div
+                        className={`grid grid-cols-1 ${
+                          debtFilterType === "ALL" ? "md:grid-cols-2" : ""
+                        } gap-4`}
+                      >
+                        {visibleOpenCols.map((col) => (
+                          <div key={col.key} className="space-y-2.5">
+                            <div className="flex items-center justify-between text-xs px-0.5">
+                              <span className={`font-semibold ${col.titleClass}`}>
+                                {col.title} ({col.list.length})
+                              </span>
+                              <span className={`font-mono-num font-bold ${col.totalClass}`}>
+                                {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                              </span>
+                            </div>
 
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSnoozeDebt(d.id)}
-                                      aria-label={`Tunda pengingat ${d.person}`}
-                                      title="Tunda reminder 3 hari"
-                                      className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-400 hover:text-amber-300 transition"
-                                    >
-                                      <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setAdjustTarget(d);
-                                        setAdjustMode("sub");
-                                        setAdjustAmount("");
-                                        setAdjustReason("");
-                                      }}
-                                      aria-label={`Sesuaikan nominal ${d.person}`}
-                                      title="Kurangi / Tambah nominal"
-                                      className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-300 hover:text-accent-300 transition"
-                                    >
-                                      <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSettleTarget(d);
-                                        setSettleAmount(d.amount ? String(d.amount) : "");
-                                        setSettleWalletId(
-                                          wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni"
-                                        );
-                                      }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent-500/15 hover:bg-accent-500/25 text-accent-200 border border-accent-500/30 text-[11px] font-semibold pressable"
-                                    >
-                                      <CheckCircle className="w-3 h-3" aria-hidden="true" />
-                                      <span>Lunas</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteDebt(d.id)}
-                                      aria-label={`Hapus catatan ${d.person}`}
-                                      title="Hapus catatan"
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </button>
+                            {col.list.length === 0 ? (
+                              <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                                {col.emptyText}
+                              </p>
+                            ) : (
+                              <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                                {col.list.map((d) => (
+                                  <div key={d.id} className="p-3.5 space-y-2 text-xs">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-slate-100 text-[13px] truncate">
+                                          {d.person}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                          <span className={`font-bold font-mono-num text-xs ${col.amtClass}`}>
+                                            {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
+                                          </span>
+                                          {d.ageDays > 0 && (
+                                            <span className="text-[11px] text-slate-400">· {d.ageDays}h</span>
+                                          )}
+                                          {d.isSnoozed && (
+                                            <span className="text-[11px] text-amber-300 font-medium">· snooze</span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSnoozeDebt(d.id)}
+                                          aria-label={`Tunda pengingat ${d.person}`}
+                                          title="Tunda reminder 3 hari"
+                                          className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-400 hover:text-amber-300 transition"
+                                        >
+                                          <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAdjustTarget(d);
+                                            setAdjustMode("sub");
+                                            setAdjustAmount("");
+                                            setAdjustReason("");
+                                          }}
+                                          aria-label={`Sesuaikan nominal ${d.person}`}
+                                          title="Kurangi / Tambah nominal"
+                                          className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] text-slate-300 hover:text-accent-300 transition"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSettleTarget(d);
+                                            setSettleAmount(d.amount ? String(d.amount) : "");
+                                            setSettleWalletId(
+                                              wallets.find((w) => !w.locked && w.role !== "credit")?.id || "bni"
+                                            );
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-accent-500/15 hover:bg-accent-500/25 text-accent-200 border border-accent-500/30 text-[11px] font-semibold pressable"
+                                        >
+                                          <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                                          <span>Lunas</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteDebt(d.id)}
+                                          aria-label={`Hapus catatan ${d.person}`}
+                                          title="Hapus catatan"
+                                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {d.note && (
+                                      <p className="text-[11px] text-slate-300 leading-relaxed break-words">
+                                        {d.note}
+                                      </p>
+                                    )}
                                   </div>
-                                </div>
-                                {d.note && (
-                                  <p className="text-[11px] text-slate-300 leading-relaxed break-words">
-                                    {d.note}
-                                  </p>
-                                )}
+                                ))}
                               </div>
-                            ))}
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[
+                (() => {
+                  const visiblePaidCols = [
                     {
                       key: "paid-utang",
+                      type: "utang",
                       title: "Utang Sudah Dibayar",
-                      list: paidUtangList,
+                      list: filteredPaidUtangList,
                       emptyText: "Belum ada riwayat utang yang sudah dibayar.",
                     },
                     {
                       key: "paid-piutang",
+                      type: "piutang",
                       title: "Piutang Sudah Dibayar",
-                      list: paidPiutangList,
+                      list: filteredPaidPiutangList,
                       emptyText: "Belum ada riwayat piutang yang sudah dibayar.",
                     },
-                  ].map((col) => (
-                    <div key={col.key} className="space-y-2.5">
-                      <div className="flex items-center justify-between text-xs px-0.5">
-                        <span className="font-semibold text-slate-200">
-                          {col.title} ({col.list.length})
-                        </span>
-                        <span className="font-mono-num text-slate-200 font-bold">
-                          {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
-                        </span>
-                      </div>
+                  ].filter((col) => debtFilterType === "ALL" || col.type === debtFilterType);
 
-                      {col.list.length === 0 ? (
-                        <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
-                          {col.emptyText}
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
-                          {col.list.map((d) => {
-                            const wName = d.targetWalletId
-                              ? wallets.find((w) => w.id === d.targetWalletId)?.name
-                              : "";
-                            return (
-                              <div key={d.id} className="p-3.5 space-y-1.5 text-xs">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-slate-100 text-[13px] truncate">
-                                      {d.person}
+                  if (hasDebtFilter && visiblePaidCols.every((c) => c.list.length === 0)) {
+                    return (
+                      <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                        <p className="text-xs text-slate-400">Tidak ada catatan sesuai filter.</p>
+                        <button
+                          type="button"
+                          onClick={resetDebtFilters}
+                          className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                        >
+                          Reset filter
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      className={`grid grid-cols-1 ${
+                        debtFilterType === "ALL" ? "md:grid-cols-2" : ""
+                      } gap-4`}
+                    >
+                      {visiblePaidCols.map((col) => (
+                        <div key={col.key} className="space-y-2.5">
+                          <div className="flex items-center justify-between text-xs px-0.5">
+                            <span className="font-semibold text-slate-200">
+                              {col.title} ({col.list.length})
+                            </span>
+                            <span className="font-mono-num text-slate-200 font-bold">
+                              {formatRupiah(col.list.reduce((a, d) => a + (Number(d.amount) || 0), 0))}
+                            </span>
+                          </div>
+
+                          {col.list.length === 0 ? (
+                            <p className="text-xs text-slate-400 p-4 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)]">
+                              {col.emptyText}
+                            </p>
+                          ) : (
+                            <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
+                              {col.list.map((d) => {
+                                const wName = d.targetWalletId
+                                  ? wallets.find((w) => w.id === d.targetWalletId)?.name
+                                  : "";
+                                return (
+                                  <div key={d.id} className="p-3.5 space-y-1.5 text-xs">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-slate-100 text-[13px] truncate">
+                                          {d.person}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] text-slate-400">
+                                          <span className="font-semibold font-mono-num text-slate-200">
+                                            {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
+                                          </span>
+                                          {d.paidAt && <span>· {formatShortDate(d.paidAt, false)}</span>}
+                                          {wName && <span>· {wName}</span>}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold">
+                                          <CheckCircle className="w-3 h-3" aria-hidden="true" />
+                                          <span>Lunas</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteDebt(d.id)}
+                                          aria-label={`Hapus riwayat ${d.person}`}
+                                          title="Hapus riwayat"
+                                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                                        </button>
+                                      </div>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] text-slate-400">
-                                      <span className="font-semibold font-mono-num text-slate-200">
-                                        {d.amount === null ? "Nominal ?" : formatRupiah(d.amount)}
-                                      </span>
-                                      {d.paidAt && <span>· {formatShortDate(d.paidAt, false)}</span>}
-                                      {wName && <span>· {wName}</span>}
-                                    </div>
+                                    {d.note && (
+                                      <p className="text-[11px] text-slate-400 leading-relaxed break-words">
+                                        {d.note}
+                                      </p>
+                                    )}
                                   </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold">
-                                      <CheckCircle className="w-3 h-3" aria-hidden="true" />
-                                      <span>Lunas</span>
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteDebt(d.id)}
-                                      aria-label={`Hapus riwayat ${d.person}`}
-                                      title="Hapus riwayat"
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                                    </button>
-                                  </div>
-                                </div>
-                                {d.note && (
-                                  <p className="text-[11px] text-slate-400 leading-relaxed break-words">
-                                    {d.note}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()
               )}
             </section>
           </div>
@@ -1815,36 +1943,48 @@ export default function TabunganPage() {
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => setInstTab("active")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                  instTab === "active"
-                    ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <span>Berjalan</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                  {activeInstallments.length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setInstTab("paid")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                  instTab === "paid"
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "text-slate-400 hover:text-slate-200 border border-transparent"
-                }`}
-              >
-                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Lunas</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                  {paidInstallments.length}
-                </span>
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)] self-start">
+                <button
+                  type="button"
+                  onClick={() => setInstTab("active")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    instTab === "active"
+                      ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span>Berjalan</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {activeInstallments.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstTab("paid")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    instTab === "paid"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      : "text-slate-400 hover:text-slate-200 border border-transparent"
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Lunas</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {paidInstallments.length}
+                  </span>
+                </button>
+              </div>
+
+              {allInstallments.length > 0 && (
+                <SearchInput
+                  value={instSearch}
+                  onChange={setInstSearch}
+                  ariaLabel="Cari cicilan"
+                  placeholder="Cari nama atau label..."
+                  className="w-full sm:w-64"
+                />
+              )}
             </div>
 
             {instTab === "active" ? (
@@ -1852,9 +1992,20 @@ export default function TabunganPage() {
                 <p className="text-xs text-slate-400 py-4">
                   Belum ada cicilan berjangka yang sedang berjalan.
                 </p>
+              ) : filteredActiveInstallments.length === 0 ? (
+                <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                  <p className="text-xs text-slate-400">Tidak ada cicilan sesuai pencarian.</p>
+                  <button
+                    type="button"
+                    onClick={() => setInstSearch("")}
+                    className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                  >
+                    Reset pencarian
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {activeInstallments.map((inst) => {
+                  {filteredActiveInstallments.map((inst) => {
                     const totalAmt = Number(inst.totalAmount) || 0;
                     const paidAmt = Number(inst.paidAmount) || 0;
                     const remaining = Math.max(0, totalAmt - paidAmt);
@@ -1988,9 +2139,20 @@ export default function TabunganPage() {
               )
             ) : paidInstallments.length === 0 ? (
               <p className="text-xs text-slate-400 py-4">Belum ada cicilan berjangka yang lunas.</p>
+            ) : filteredPaidInstallments.length === 0 ? (
+              <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                <p className="text-xs text-slate-400">Tidak ada cicilan sesuai pencarian.</p>
+                <button
+                  type="button"
+                  onClick={() => setInstSearch("")}
+                  className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                >
+                  Reset pencarian
+                </button>
+              </div>
             ) : (
               <div className="divide-y divide-[var(--border-subtle)] rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] overflow-hidden">
-                {paidInstallments.map((inst) => (
+                {filteredPaidInstallments.map((inst) => (
                   <div
                     key={inst.id}
                     className="p-3.5 flex items-center justify-between gap-3 text-xs"
@@ -2051,36 +2213,63 @@ export default function TabunganPage() {
               </div>
             </div>
 
-            <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => setWishlistTab("planned")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                  wishlistTab === "planned"
-                    ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                <span>Direncanakan</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                  {plannedWishlists.length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWishlistTab("bought")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
-                  wishlistTab === "bought"
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                    : "text-slate-400 hover:text-slate-200 border border-transparent"
-                }`}
-              >
-                <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Sudah Dibeli</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
-                  {boughtWishlists.length}
-                </span>
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="inline-flex items-center gap-1 bg-[var(--bg-inset)] p-1 rounded-xl border border-[var(--border-subtle)] self-start">
+                <button
+                  type="button"
+                  onClick={() => setWishlistTab("planned")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    wishlistTab === "planned"
+                      ? "bg-[var(--bg-active)] text-slate-100 shadow-xs"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span>Direncanakan</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {plannedWishlists.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWishlistTab("bought")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                    wishlistTab === "bought"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      : "text-slate-400 hover:text-slate-200 border border-transparent"
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Sudah Dibeli</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-[var(--track-bg)] font-mono-num">
+                    {boughtWishlists.length}
+                  </span>
+                </button>
+              </div>
+
+              {wishlists.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 flex-1 sm:max-w-sm">
+                  <SearchInput
+                    value={wishSearch}
+                    onChange={setWishSearch}
+                    ariaLabel="Cari barang incaran"
+                    placeholder="Cari barang atau catatan..."
+                    className="flex-1 min-w-[160px]"
+                  />
+                  {wishlistTab === "planned" && (
+                    <select
+                      aria-label="Filter prioritas barang"
+                      value={wishPriorityFilter}
+                      onChange={(e) => setWishPriorityFilter(e.target.value)}
+                      className="min-h-[36px] px-2.5 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500 shrink-0"
+                    >
+                      <option value="ALL">Semua</option>
+                      <option value="high">Prioritas</option>
+                      <option value="medium">Sedang</option>
+                      <option value="low">Santai</option>
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
 
             {wishlistTab === "planned" ? (
@@ -2092,9 +2281,20 @@ export default function TabunganPage() {
                   </code>{" "}
                   di Telegram.
                 </p>
+              ) : filteredPlannedWishlists.length === 0 ? (
+                <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                  <p className="text-xs text-slate-400">Tidak ada barang sesuai filter.</p>
+                  <button
+                    type="button"
+                    onClick={resetWishFilters}
+                    className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                  >
+                    Reset filter
+                  </button>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {plannedWishlists.map((w) => {
+                  {filteredPlannedWishlists.map((w) => {
                     const pct = w.price > 0 ? Math.min(100, Math.round(((w.saved || 0) / w.price) * 100)) : 0;
                     return (
                       <div
@@ -2200,9 +2400,20 @@ export default function TabunganPage() {
               )
             ) : boughtWishlists.length === 0 ? (
               <p className="text-xs text-slate-400 py-4">Belum ada item yang sudah dibeli.</p>
+            ) : filteredBoughtWishlists.length === 0 ? (
+              <div className="py-8 text-center rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] space-y-2.5">
+                <p className="text-xs text-slate-400">Tidak ada barang sesuai filter.</p>
+                <button
+                  type="button"
+                  onClick={resetWishFilters}
+                  className="px-3.5 py-1.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--hover-tint)] border border-[var(--border-default)] text-xs font-semibold text-slate-100 pressable"
+                >
+                  Reset filter
+                </button>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {boughtWishlists.map((w) => (
+                {filteredBoughtWishlists.map((w) => (
                   <div
                     key={w.id}
                     className="p-3.5 rounded-xl bg-[var(--bg-inset)] border border-[var(--border-subtle)] flex items-center justify-between gap-2 text-xs"

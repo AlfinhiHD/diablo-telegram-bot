@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Nav from "@/components/Nav";
 import QuickLogModal from "@/components/QuickLogModal";
+import SearchInput from "@/components/SearchInput";
 import { PageSkeleton, DiabloScreenLoader, Spinner } from "@/components/DiabloLoader";
 import { useDiabloData } from "@/lib/diablo-client";
 import { formatRupiah, groupTransactionsByDate } from "@/lib/format";
 import { listAvailablePeriods, getCycleBounds } from "@/lib/period-report";
 import { normalizeAgent } from "@/lib/agent-persona";
-import { Search, Trash2, ReceiptText, BarChart3, X, Plus, Wallet } from "lucide-react";
+import { Trash2, ReceiptText, BarChart3, Plus, Wallet } from "lucide-react";
 
 function RiwayatContent() {
   const searchParams = useSearchParams();
@@ -23,6 +24,7 @@ function RiwayatContent() {
   const [filterWallet, setFilterWallet] = useState(initialWallet);
   const [filterPeriod, setFilterPeriod] = useState(initialPeriod);
   const [filterIntent, setFilterIntent] = useState("ALL");
+  const [filterCategory, setFilterCategory] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [movingTxId, setMovingTxId] = useState(null);
   const [busyTxId, setBusyTxId] = useState(null);
@@ -116,21 +118,36 @@ function RiwayatContent() {
     });
   }, [transactions, activePeriodKey, paydayDate]);
 
+  const availableCategories = useMemo(() => {
+    const set = new Set();
+    for (const t of periodTransactions) {
+      if (t.category) set.add(t.category);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "id"));
+  }, [periodTransactions]);
+
+  const activeCategory =
+    filterCategory !== "ALL" && availableCategories.includes(filterCategory) ? filterCategory : "ALL";
+
   const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return periodTransactions.filter((t) => {
       const matchesWallet = filterWallet === "ALL" || t.walletId === filterWallet;
       const isIncome = t.type === "income";
       const matchesIntent =
         filterIntent === "ALL" ||
         (filterIntent === "INCOME" ? isIncome : !isIncome && t.intent === filterIntent);
+      const matchesCategory = activeCategory === "ALL" || (t.category || "") === activeCategory;
       const matchesSearch =
-        !searchQuery.trim() ||
-        t.item.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.category || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.walletName || "").toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesWallet && matchesIntent && matchesSearch;
+        !q ||
+        t.item.toLowerCase().includes(q) ||
+        (t.category || "").toLowerCase().includes(q) ||
+        (t.walletName || "").toLowerCase().includes(q) ||
+        (t.paymentMethod || "").toLowerCase().includes(q) ||
+        (t.notes || "").toLowerCase().includes(q);
+      return matchesWallet && matchesIntent && matchesCategory && matchesSearch;
     });
-  }, [periodTransactions, filterWallet, filterIntent, searchQuery]);
+  }, [periodTransactions, filterWallet, filterIntent, activeCategory, searchQuery]);
 
   const grouped = useMemo(() => groupTransactionsByDate(filtered), [filtered]);
 
@@ -146,12 +163,14 @@ function RiwayatContent() {
     Boolean(searchQuery.trim()) ||
     filterIntent !== "ALL" ||
     filterWallet !== "ALL" ||
+    activeCategory !== "ALL" ||
     (filterPeriod && filterPeriod !== (periods[0]?.key || ""));
 
   function resetAllFilters() {
     setSearchQuery("");
     setFilterIntent("ALL");
     setFilterWallet("ALL");
+    setFilterCategory("ALL");
     setFilterPeriod("");
   }
 
@@ -222,44 +241,45 @@ function RiwayatContent() {
         {/* UNIFIED COMPACT FILTER CARD */}
         <section className="surface-card rounded-2xl p-4 space-y-3">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            <div className="relative flex-1">
-              <Search
-                className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                aria-hidden="true"
-              />
-              <input
-                type="text"
-                aria-label="Cari transaksi"
-                placeholder="Cari transaksi (kopi, makan, tagihan)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-9 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-accent-500 transition"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  aria-label="Hapus pencarian"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-100"
-                >
-                  <X className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              ariaLabel="Cari transaksi"
+              placeholder="Cari transaksi (kopi, makan, tagihan)..."
+              className="flex-1"
+            />
 
-            <select
-              aria-label="Pilih periode siklus"
-              value={activePeriodKey}
-              onChange={(e) => setFilterPeriod(e.target.value)}
-              className="px-3 py-2 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500 shrink-0"
-            >
-              {periods.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.shortLabel} ({p.txCount})
-                </option>
-              ))}
-              <option value="ALL">Semua Periode ({transactions.length})</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {availableCategories.length > 0 && (
+                <select
+                  aria-label="Pilih kategori"
+                  value={activeCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="min-h-[36px] flex-1 sm:flex-none px-3 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500 shrink-0"
+                >
+                  <option value="ALL">Semua Kategori</option>
+                  {availableCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <select
+                aria-label="Pilih periode siklus"
+                value={activePeriodKey}
+                onChange={(e) => setFilterPeriod(e.target.value)}
+                className="min-h-[36px] flex-1 sm:flex-none px-3 py-1.5 bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-xl text-xs text-slate-100 focus:outline-none focus:border-accent-500 shrink-0"
+              >
+                {periods.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.shortLabel} ({p.txCount})
+                  </option>
+                ))}
+                <option value="ALL">Semua Periode ({transactions.length})</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
